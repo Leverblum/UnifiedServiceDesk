@@ -1,0 +1,13 @@
+# Framework Web y Servidor ASGI
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Base de Datos y ORM
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.9
+
+# Validación de Datos y Configuración
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+email-validator>=2.2.0
+python-dotenv>=1.0.0
