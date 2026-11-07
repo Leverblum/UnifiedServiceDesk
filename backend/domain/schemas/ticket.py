@@ -1,17 +1,28 @@
 """
 Esquemas de validación y DTOs (Data Transfer Objects) con Pydantic.
+Adaptado para Servicios Universitarios Integrales:
+- Casos de Estudiantes: ACADEMIC_CERTIFICATE, MATRICULA, RADICADO, CAMPUS_VIRTUAL
+- Casos de Personal Universitario: HARDWARE, SOFTWARE, ACCESS, INFRASTRUCTURE
 """
 
 from enum import Enum
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
+from backend.domain.schemas.user import UserSimpleResponse
 
 
 class TicketCategory(str, Enum):
-    HARDWARE = "HARDWARE"
-    SOFTWARE = "SOFTWARE"
-    ACCESS = "ACCESS"
+    # Servicios y Trámites para Estudiantes
+    CERTIFICADO = "CERTIFICADO"           # Certificados de notas, constancias de estudio
+    MATRICULA = "MATRICULA"               # Ajustes de matrícula, homologaciones, cupos
+    RADICADO = "RADICADO"                 # Solicitudes formales, peticiones académicas
+    CAMPUS_VIRTUAL = "CAMPUS_VIRTUAL"     # Aula virtual, correo institucional, Teams
+
+    # Servicios TI para Personal Administrativo y Docente
+    HARDWARE = "HARDWARE"                 # Teclado, equipo de cómputo, proyectores en aulas
+    SOFTWARE = "SOFTWARE"                 # ERP académico, software de laboratorios
+    ACCESS = "ACCESS"                     # Permisos de red, VPN institucional, sistemas
 
 
 class TicketPriority(str, Enum):
@@ -30,13 +41,14 @@ class TicketStatus(str, Enum):
 
 class TicketCreateRequest(BaseModel):
     """
-    DTO para la creación de un nuevo Ticket.
+    DTO para la creación de un nuevo Ticket de servicio o soporte universitario.
     """
-    title: str = Field(..., min_length=3, max_length=255, description="Título conciso del ticket")
-    description: str = Field(..., min_length=5, description="Descripción detallada de la incidencia")
-    category: TicketCategory = Field(..., description="Categoría que determina la factoría a instanciar")
-    priority: Optional[TicketPriority] = Field(None, description="Prioridad opcional; si no se especifica, la fábrica asigna una por defecto")
+    title: str = Field(..., min_length=3, max_length=255, description="Título conciso del requerimiento o caso")
+    description: str = Field(..., min_length=5, description="Descripción detallada de la solicitud o incidencia")
+    category: TicketCategory = Field(..., description="Categoría que determina la factoría polimórfica a instanciar")
+    priority: Optional[TicketPriority] = Field(None, description="Prioridad opcional; la fábrica asigna una por defecto")
     specific_metadata: Dict[str, Any] = Field(default_factory=dict, description="Campos específicos requeridos por categoría")
+    created_by_id: Optional[int] = Field(None, description="ID del usuario solicitante (estudiante o personal)")
 
 
 class TicketStatusUpdateRequest(BaseModel):
@@ -45,6 +57,16 @@ class TicketStatusUpdateRequest(BaseModel):
     """
     target_status: TicketStatus = Field(..., description="Estado destino a transicionar")
     reason: Optional[str] = Field(None, description="Motivo o comentario adicional para el registro de auditoría")
+    user_id: Optional[int] = Field(None, description="ID del usuario que ejecuta la acción")
+
+
+class TicketAssignRequest(BaseModel):
+    """
+    DTO para asignar o reasignar un ticket a un especialista técnico o administrativo.
+    """
+    assigned_to_id: Optional[int] = Field(..., description="ID del técnico de soporte asignado (o None para desasignar)")
+    reason: Optional[str] = Field(None, description="Motivo de la asignación o reasignación")
+    assigned_by_user_id: Optional[int] = Field(None, description="ID del usuario o admin que realiza la asignación")
 
 
 class AuditLogResponse(BaseModel):
@@ -75,6 +97,10 @@ class TicketResponse(BaseModel):
     priority: str
     status: str
     specific_metadata: Optional[Dict[str, Any]] = None
+    created_by_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
+    creator: Optional[UserSimpleResponse] = None
+    assignee: Optional[UserSimpleResponse] = None
     created_at: datetime
     updated_at: datetime
     audit_logs: Optional[List[AuditLogResponse]] = None

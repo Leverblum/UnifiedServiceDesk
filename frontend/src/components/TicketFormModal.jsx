@@ -1,10 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-export default function TicketFormModal({ isOpen, onClose, onTicketCreated }) {
+export default function TicketFormModal({
+  isOpen,
+  onClose,
+  onTicketCreated,
+  currentUser,
+  users = [],
+}) {
   const [category, setCategory] = useState('HARDWARE');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('');
+  const [createdById, setCreatedById] = useState(currentUser?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -12,6 +19,12 @@ export default function TicketFormModal({ isOpen, onClose, onTicketCreated }) {
   const [hardwareMeta, setHardwareMeta] = useState({ serial_number: '', device_type: '' });
   const [softwareMeta, setSoftwareMeta] = useState({ software_name: '', version: '', os_environment: '' });
   const [accessMeta, setAccessMeta] = useState({ target_system: '', system_role: '', user_account: '' });
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      setCreatedById(currentUser.id);
+    }
+  }, [currentUser, isOpen]);
 
   if (!isOpen) return null;
 
@@ -34,6 +47,7 @@ export default function TicketFormModal({ isOpen, onClose, onTicketCreated }) {
       description,
       category,
       priority: priority || null,
+      created_by_id: createdById ? parseInt(createdById, 10) : (currentUser?.id || null),
       specific_metadata,
     };
 
@@ -89,6 +103,31 @@ export default function TicketFormModal({ isOpen, onClose, onTicketCreated }) {
             </div>
           )}
 
+          {/* Solicitante / Creador */}
+          <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs">
+            <span className="text-slate-400 font-medium">Solicitante del Ticket:</span>
+            {currentUser?.role === 'ADMIN' ? (
+              <select
+                value={createdById}
+                onChange={(e) => setCreatedById(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-semibold text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name} ({u.role} - {u.department || 'Sin área'})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <span>👤</span> {currentUser?.full_name || 'Usuario Solicitante'}
+                {currentUser?.department && (
+                  <span className="text-[10px] text-slate-400 font-normal">({currentUser.department})</span>
+                )}
+              </span>
+            )}
+          </div>
+
           {/* Selector de Fábrica (Categoría) */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
@@ -96,9 +135,9 @@ export default function TicketFormModal({ isOpen, onClose, onTicketCreated }) {
             </label>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { id: 'HARDWARE', label: 'Hardware', desc: 'HardwareTicketFactory', color: 'indigo' },
-                { id: 'SOFTWARE', label: 'Software', desc: 'SoftwareTicketFactory', color: 'cyan' },
-                { id: 'ACCESS', label: 'Acceso / Seguridad', desc: 'AccessTicketFactory', color: 'purple' },
+                { id: 'HARDWARE', label: 'Hardware', desc: 'HardwareTicketFactory' },
+                { id: 'SOFTWARE', label: 'Software', desc: 'SoftwareTicketFactory' },
+                { id: 'ACCESS', label: 'Acceso / Seguridad', desc: 'AccessTicketFactory' },
               ].map((cat) => (
                 <button
                   type="button"
@@ -144,28 +183,26 @@ export default function TicketFormModal({ isOpen, onClose, onTicketCreated }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
-                Prioridad Explícita <span className="text-slate-500">(Opcional)</span>
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">Por defecto de fábrica</option>
-                <option value="LOW">Baja (LOW)</option>
-                <option value="MEDIUM">Media (MEDIUM)</option>
-                <option value="HIGH">Alta (HIGH)</option>
-                <option value="CRITICAL">Crítica (CRITICAL)</option>
-              </select>
-              <p className="text-[10px] text-slate-500 mt-1">
-                {category === 'HARDWARE' && 'Por defecto: HIGH'}
-                {category === 'SOFTWARE' && 'Por defecto: MEDIUM'}
-                {category === 'ACCESS' && 'Por defecto: CRITICAL'}
-              </p>
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              Prioridad Explícita <span className="text-slate-500">(Opcional)</span>
+            </label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">Por defecto de fábrica</option>
+              <option value="LOW">Baja (LOW)</option>
+              <option value="MEDIUM">Media (MEDIUM)</option>
+              <option value="HIGH">Alta (HIGH)</option>
+              <option value="CRITICAL">Crítica (CRITICAL)</option>
+            </select>
+            <p className="text-[10px] text-slate-500 mt-1">
+              {category === 'HARDWARE' && 'Por defecto: HIGH'}
+              {category === 'SOFTWARE' && 'Por defecto: MEDIUM'}
+              {category === 'ACCESS' && 'Por defecto: CRITICAL'}
+            </p>
           </div>
 
           {/* Metadatos Específicos Exigidos por la Fábrica Polimórfica */}

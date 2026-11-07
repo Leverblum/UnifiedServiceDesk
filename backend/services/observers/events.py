@@ -15,8 +15,12 @@ class TicketEvent:
     reaccionen sin acoplarse directamente al modelo ORM.
     """
     ticket_id: int
-    event_type: str        # TICKET_CREATED, STATUS_CHANGED, TICKET_DELETED
+    event_type: str        # TICKET_CREATED, STATUS_CHANGED, TICKET_ASSIGNED, TICKET_DELETED
     old_status: Optional[str]
     new_status: str
     details: Optional[str] = None
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    assignee_name: Optional[str] = None
+    assignee_email: Optional[str] = None
     timestamp: datetime = datetime.now(timezone.utc)

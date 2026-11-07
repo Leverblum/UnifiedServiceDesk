@@ -70,11 +70,24 @@ class DatabaseManager:
 
             try:
                 self._engine = create_engine(self._database_url, **engine_args)
+                # Verificar conectividad real a la base de datos
+                if "postgresql" in self._database_url:
+                    with self._engine.connect() as conn:
+                        pass
             except Exception as e:
-                logger.error(f"Error al inicializar engine con {self._database_url}: {e}")
-                # Fallback resiliente para desarrollo si PostgreSQL no está disponible
+                if isinstance(e, UnicodeDecodeError):
+                    failure_detail = (
+                        "el servidor PostgreSQL devolvió un mensaje con codificación "
+                        "no UTF-8; revise la codificación del servidor y client_encoding"
+                    )
+                else:
+                    failure_detail = f"{type(e).__name__}: {e}"
+                logger.warning(
+                    "No fue posible conectar con la base de datos configurada (%s). "
+                    "Activando fallback resiliente a SQLite local.",
+                    failure_detail,
+                )
                 fallback_url = "sqlite:///./unified_service_desk.db"
-                logger.warning(f"Activando fallback a SQLite local: {fallback_url}")
                 self._database_url = fallback_url
                 self._engine = create_engine(fallback_url, connect_args={"check_same_thread": False})
 
@@ -109,6 +122,32 @@ class DatabaseManager:
         """Crea todas las tablas declaradas en la metadata de SQLAlchemy."""
         import backend.domain.models  # Garantizar que los modelos ORM estén registrados en Base.metadata
         Base.metadata.create_all(bind=self._engine)
+
+        # Migración defensiva automática para SQLite local si existía la base de datos previa
+        if "sqlite" in self._database_url:
+            try:
+                from sqlalchemy import text
+                with self._engine.connect() as conn:
+                    # Migraciones de tickets (ya existentes)
+                    res = conn.execute(text("PRAGMA table_info(tickets);")).fetchall()
+                    col_names = [r[1] for r in res]
+                    if col_names and "created_by_id" not in col_names:
+                        conn.execute(text("ALTER TABLE tickets ADD COLUMN created_by_id INTEGER REFERENCES users(id);"))
+                        conn.commit()
+                    if col_names and "assigned_to_id" not in col_names:
+                        conn.execute(text("ALTER TABLE tickets ADD COLUMN assigned_to_id INTEGER REFERENCES users(id);"))
+                        conn.commit()
+                    # Nueva migración: agregar columna password a la tabla users si falta
+                    res_users = conn.execute(text("PRAGMA table_info(users);")).fetchall()
+                    user_cols = [r[1] for r in res_users]
+                    if "password" not in user_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT '12345';"))
+                        conn.commit()
+                    if "created_at" not in user_cols:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME;"))
+                        conn.commit()
+            except Exception as e:
+                logger.debug(f"Migración preventiva SQLite: {e}")
 
     def drop_all_tables(self) -> None:
         """Elimina todas las tablas (usado en tests y mantenimiento)."""

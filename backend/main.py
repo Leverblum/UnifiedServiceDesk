@@ -23,15 +23,30 @@ logger = logging.getLogger("UnifiedServiceDesk")
 async def lifespan(app: FastAPI):
     """
     Gestión del ciclo de vida de la aplicación.
-    Inicializa el pool del DatabaseManager (Singleton) y asegura la creación de tablas.
+    Inicializa el pool del DatabaseManager (Singleton), asegura la creación de tablas
+    y siembra usuarios iniciales si la base de datos está vacía.
     """
     logger.info("Iniciando aplicación Unified Service Desk...")
     try:
         db_manager = DatabaseManager()
         db_manager.create_all_tables()
         logger.info("Tablas de base de datos verificadas/creadas exitosamente.")
+
+        # Sembrar usuarios iniciales para pruebas inmediatas de roles
+        from backend.repositories.ticket_repository import SQLAlchemyTicketRepository
+        from backend.repositories.user_repository import SQLAlchemyUserRepository
+        from backend.services.service_desk_facade import ServiceDeskFacade
+        session = next(db_manager.get_session())
+        try:
+            facade = ServiceDeskFacade(
+                repository=SQLAlchemyTicketRepository(session),
+                user_repository=SQLAlchemyUserRepository(session)
+            )
+            facade.seed_default_users()
+        finally:
+            session.close()
     except Exception as e:
-        logger.error(f"Error al verificar tablas en base de datos: {e}")
+        logger.error(f"Error al inicializar base de datos / seed users: {e}")
 
     yield
 

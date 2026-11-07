@@ -3,6 +3,15 @@ Exportación del módulo de servicios y fachada.
 """
 
 from backend.services.service_desk_facade import ServiceDeskFacade
-from backend.services.exceptions import TicketNotFoundError
+from backend.services.exceptions import (
+    TicketNotFoundError,
+    UserNotFoundError,
+    UnauthorizedRoleActionError,
+)
 
-__all__ = ["ServiceDeskFacade", "TicketNotFoundError"]
+__all__ = [
+    "ServiceDeskFacade",
+    "TicketNotFoundError",
+    "UserNotFoundError",
+    "UnauthorizedRoleActionError"
+]

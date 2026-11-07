@@ -25,10 +25,13 @@ class TicketRepositoryInterface(ABC):
         self,
         category: Optional[str] = None,
         status: Optional[str] = None,
+        created_by_id: Optional[int] = None,
+        assigned_to_id: Optional[int] = None,
+        unassigned_only: bool = False,
         skip: int = 0,
         limit: int = 100
     ) -> List[TicketModel]:
-        """Obtiene la lista de tickets aplicando filtros opcionales y paginación."""
+        """Obtiene la lista de tickets aplicando filtros opcionales de categoría, estado, usuario y asignación."""
         pass
 
     @abstractmethod

@@ -3,7 +3,7 @@ Modelo ORM de SQLAlchemy para la entidad Ticket.
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from backend.core.database import Base
 
@@ -21,12 +21,20 @@ class TicketModel(Base):
     priority = Column(String(20), nullable=False, default="MEDIUM") # LOW, MEDIUM, HIGH, CRITICAL
     status = Column(String(30), nullable=False, default="OPEN", index=True) # OPEN, IN_PROCESS, RESOLVED, CLOSED
     
+    # Usuario creador (solicitante) y técnico asignado (soporte TI)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    assigned_to_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Almacenamiento polimórfico de metadatos según la fábrica de ticket
     # Ej: { "serial_number": "HW-991" } o { "software_name": "Postgres", "version": "16" }
     specific_metadata = Column(JSON, nullable=True, default=dict)
     
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relaciones con Usuarios
+    creator = relationship("UserModel", foreign_keys=[created_by_id], back_populates="created_tickets")
+    assignee = relationship("UserModel", foreign_keys=[assigned_to_id], back_populates="assigned_tickets")
 
     # Relación con auditoría
     audit_logs = relationship("AuditLogModel", back_populates="ticket", cascade="all, delete-orphan")

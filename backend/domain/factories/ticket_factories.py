@@ -1,6 +1,15 @@
 """
 Implementación del Patrón Factory Method (GoF) para la creación polimórfica de Tickets.
-Cada creador concreto aplica reglas de negocio, validaciones y metadatos específicos.
+Soporta:
+- Trámites y Servicios Estudiantiles:
+  * CertificadoTicketFactory (CERTIFICADO)
+  * MatriculaTicketFactory (MATRICULA)
+  * RadicadoTicketFactory (RADICADO)
+  * CampusVirtualTicketFactory (CAMPUS_VIRTUAL)
+- Soporte e Infraestructura para Personal Universitario:
+  * HardwareTicketFactory (HARDWARE)
+  * SoftwareTicketFactory (SOFTWARE)
+  * AccessTicketFactory (ACCESS)
 """
 
 from abc import ABC, abstractmethod
@@ -19,34 +28,164 @@ class TicketFactory(ABC):
 
     @abstractmethod
     def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
-        """
-        Método de fábrica abstracto. Las subclases implementan las reglas
-        específicas de validación, prioridad por defecto y enriquecimiento de metadatos.
-        """
         pass
 
 
-class HardwareTicketFactory(TicketFactory):
+# ============================================================
+# FÁBRICAS PARA TRÁMITES Y SERVICIOS ESTUDIANTILES
+# ============================================================
+
+class CertificadoTicketFactory(TicketFactory):
     """
-    Fábrica Concreta para Tickets de Hardware:
-    - Regla: Requiere obligatoriamente 'serial_number' o 'device_type' en specific_metadata.
-    - Prioridad por defecto: HIGH (un fallo de hardware detiene la operatividad física del usuario).
-    - Enriquecimiento: Marca 'warranty_check_required' en True.
+    Fábrica Concreta para Solicitud de Certificados Académicos:
+    - Regla: Requiere obligatoriamente 'student_code' y 'certificate_type' (ej. Notas, Estudio, Buena Conducta).
+    - Prioridad por defecto: MEDIUM.
     """
 
     def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
         metadata = dict(request.specific_metadata or {})
-        
+        student_code = metadata.get("student_code")
+        cert_type = metadata.get("certificate_type")
+
+        if not student_code or not cert_type:
+            raise FactoryValidationError(
+                category=TicketCategory.CERTIFICADO.value,
+                message="Se requiere 'student_code' (código de estudiante) y 'certificate_type' (tipo de certificado)."
+            )
+
+        metadata["digital_delivery"] = metadata.get("digital_delivery", True)
+        metadata["academic_period"] = metadata.get("academic_period", "2026-2")
+
+        priority = request.priority.value if request.priority else TicketPriority.MEDIUM.value
+
+        return TicketModel(
+            title=request.title,
+            description=request.description,
+            category=TicketCategory.CERTIFICADO.value,
+            priority=priority,
+            status="OPEN",
+            created_by_id=request.created_by_id,
+            specific_metadata=metadata
+        )
+
+
+class MatriculaTicketFactory(TicketFactory):
+    """
+    Fábrica Concreta para Ajustes e Incidencias de Matrícula:
+    - Regla: Requiere 'student_code' y 'subject_or_program' (asignatura o programa académico).
+    - Prioridad por defecto: HIGH (la matrícula afecta directamente la inscripción de materias).
+    """
+
+    def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
+        metadata = dict(request.specific_metadata or {})
+        student_code = metadata.get("student_code")
+        program = metadata.get("subject_or_program") or metadata.get("academic_program")
+
+        if not student_code or not program:
+            raise FactoryValidationError(
+                category=TicketCategory.MATRICULA.value,
+                message="Se requiere 'student_code' y 'subject_or_program' para tramitar el ajuste de matrícula."
+            )
+
+        metadata["requires_academic_approval"] = True
+        priority = request.priority.value if request.priority else TicketPriority.HIGH.value
+
+        return TicketModel(
+            title=request.title,
+            description=request.description,
+            category=TicketCategory.MATRICULA.value,
+            priority=priority,
+            status="OPEN",
+            created_by_id=request.created_by_id,
+            specific_metadata=metadata
+        )
+
+
+class RadicadoTicketFactory(TicketFactory):
+    """
+    Fábrica Concreta para Radicados y Peticiones Formales Universitarias:
+    - Regla: Requiere 'request_type' (petición, queja, reclamo o solicitud especial).
+    - Enriquecimiento: Genera número radicado consecutivo interno.
+    - Prioridad por defecto: MEDIUM.
+    """
+
+    def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
+        metadata = dict(request.specific_metadata or {})
+        request_type = metadata.get("request_type")
+
+        if not request_type:
+            raise FactoryValidationError(
+                category=TicketCategory.RADICADO.value,
+                message="Se requiere 'request_type' (tipo de petición o radicado)."
+            )
+
+        import uuid
+        metadata["radicado_number"] = metadata.get("radicado_number", f"RAD-{uuid.uuid4().hex[:8].upper()}")
+        priority = request.priority.value if request.priority else TicketPriority.MEDIUM.value
+
+        return TicketModel(
+            title=request.title,
+            description=request.description,
+            category=TicketCategory.RADICADO.value,
+            priority=priority,
+            status="OPEN",
+            created_by_id=request.created_by_id,
+            specific_metadata=metadata
+        )
+
+
+class CampusVirtualTicketFactory(TicketFactory):
+    """
+    Fábrica Concreta para Incidencias en Campus Virtual y Plataformas de Aprendizaje:
+    - Regla: Requiere 'platform_name' (Moodle, Teams, Correo Institucional).
+    - Prioridad por defecto: HIGH.
+    """
+
+    def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
+        metadata = dict(request.specific_metadata or {})
+        platform_name = metadata.get("platform_name")
+
+        if not platform_name:
+            raise FactoryValidationError(
+                category=TicketCategory.CAMPUS_VIRTUAL.value,
+                message="Se requiere 'platform_name' (plataforma afectada ej. Moodle, Teams, Aula Virtual)."
+            )
+
+        priority = request.priority.value if request.priority else TicketPriority.HIGH.value
+
+        return TicketModel(
+            title=request.title,
+            description=request.description,
+            category=TicketCategory.CAMPUS_VIRTUAL.value,
+            priority=priority,
+            status="OPEN",
+            created_by_id=request.created_by_id,
+            specific_metadata=metadata
+        )
+
+
+# ============================================================
+# FÁBRICAS PARA SOPORTE E INFRAESTRUCTURA DE PERSONAL / DOCENTES
+# ============================================================
+
+class HardwareTicketFactory(TicketFactory):
+    """
+    Fábrica Concreta para Tickets de Hardware en Oficinas y Aulas:
+    - Regla: Requiere 'serial_number' o 'device_type' (ej. Teclado, Proyector aula, PC docente).
+    - Prioridad por defecto: HIGH.
+    """
+
+    def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
+        metadata = dict(request.specific_metadata or {})
         serial = metadata.get("serial_number")
         device_type = metadata.get("device_type")
-        
+
         if not serial and not device_type:
             raise FactoryValidationError(
                 category=TicketCategory.HARDWARE.value,
                 message="Se requiere 'serial_number' o 'device_type' en los metadatos específicos."
             )
 
-        # Enriquecimiento de reglas de negocio
         metadata["warranty_check_required"] = metadata.get("warranty_check_required", True)
         if serial:
             metadata["serial_number"] = str(serial).strip().upper()
@@ -59,31 +198,30 @@ class HardwareTicketFactory(TicketFactory):
             category=TicketCategory.HARDWARE.value,
             priority=priority,
             status="OPEN",
+            created_by_id=request.created_by_id,
             specific_metadata=metadata
         )
 
 
 class SoftwareTicketFactory(TicketFactory):
     """
-    Fábrica Concreta para Tickets de Software:
-    - Regla: Requiere obligatoriamente 'software_name' en specific_metadata.
+    Fábrica Concreta para Tickets de Software y Sistemas Académicos:
+    - Regla: Requiere obligatoriamente 'software_name'.
     - Prioridad por defecto: MEDIUM.
-    - Enriquecimiento: Captura versión y entorno del sistema operativo si no se indican.
     """
 
     def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
         metadata = dict(request.specific_metadata or {})
-        
         software_name = metadata.get("software_name")
+
         if not software_name:
             raise FactoryValidationError(
                 category=TicketCategory.SOFTWARE.value,
                 message="Se requiere 'software_name' en los metadatos específicos."
             )
 
-        metadata["version"] = metadata.get("version", "No especificada")
-        metadata["os_environment"] = metadata.get("os_environment", "Windows/Linux Generic")
-
+        metadata["version"] = metadata.get("version", "Institucional")
+        metadata["os_environment"] = metadata.get("os_environment", "Windows Campus")
         priority = request.priority.value if request.priority else TicketPriority.MEDIUM.value
 
         return TicketModel(
@@ -92,21 +230,20 @@ class SoftwareTicketFactory(TicketFactory):
             category=TicketCategory.SOFTWARE.value,
             priority=priority,
             status="OPEN",
+            created_by_id=request.created_by_id,
             specific_metadata=metadata
         )
 
 
 class AccessTicketFactory(TicketFactory):
     """
-    Fábrica Concreta para Tickets de Permisos y Accesos:
-    - Regla: Requiere obligatoriamente 'target_system' y 'system_role' o 'user_account'.
-    - Prioridad por defecto: CRITICAL (los bloqueos de permisos o incidentes de seguridad son críticos).
-    - Enriquecimiento: Exige 'approval_required' = True para control de seguridad/compliance.
+    Fábrica Concreta para Accesos y Permisos Institucionales:
+    - Regla: Requiere 'target_system' y ('system_role' o 'user_account').
+    - Prioridad por defecto: CRITICAL.
     """
 
     def create_ticket(self, request: TicketCreateRequest) -> TicketModel:
         metadata = dict(request.specific_metadata or {})
-        
         target_system = metadata.get("target_system")
         system_role = metadata.get("system_role") or metadata.get("user_account")
 
@@ -116,10 +253,8 @@ class AccessTicketFactory(TicketFactory):
                 message="Se requiere 'target_system' y ('system_role' o 'user_account') en los metadatos específicos."
             )
 
-        # Invariante de seguridad
         metadata["approval_required"] = True
         metadata["audit_clearance"] = metadata.get("audit_clearance", "PENDING_SECURITY_APPROVAL")
-
         priority = request.priority.value if request.priority else TicketPriority.CRITICAL.value
 
         return TicketModel(
@@ -128,16 +263,22 @@ class AccessTicketFactory(TicketFactory):
             category=TicketCategory.ACCESS.value,
             priority=priority,
             status="OPEN",
+            created_by_id=request.created_by_id,
             specific_metadata=metadata
         )
 
 
 class TicketFactoryRegistry:
     """
-    Registro y despachador de Fábricas Concretas.
-    Permite extender el sistema con nuevas categorías sin modificar el código cliente (Open/Closed Principle).
+    Registro y despachador de Fábricas Concretas (Open/Closed Principle).
     """
     _registry: Dict[str, Type[TicketFactory]] = {
+        # Estudiantes
+        TicketCategory.CERTIFICADO.value: CertificadoTicketFactory,
+        TicketCategory.MATRICULA.value: MatriculaTicketFactory,
+        TicketCategory.RADICADO.value: RadicadoTicketFactory,
+        TicketCategory.CAMPUS_VIRTUAL.value: CampusVirtualTicketFactory,
+        # Personal
         TicketCategory.HARDWARE.value: HardwareTicketFactory,
         TicketCategory.SOFTWARE.value: SoftwareTicketFactory,
         TicketCategory.ACCESS.value: AccessTicketFactory,

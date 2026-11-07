@@ -43,6 +43,13 @@ export default function AuditLogModal({ ticket, isOpen, onClose }) {
                 Observer Pattern
               </span>
             </h3>
+            {ticket && (
+              <div className="flex items-center gap-3 text-xs text-slate-300 mt-1">
+                <span>👤 Solicitante: <strong className="text-white">{ticket.creator?.full_name || 'Anónimo'}</strong></span>
+                <span>&bull;</span>
+                <span>🛠️ Especialista TI: <strong className="text-emerald-400">{ticket.assignee?.full_name || 'Sin asignar'}</strong></span>
+              </div>
+            )}
             <p className="text-xs text-slate-400 mt-0.5">
               Eventos despachados por el TicketSubject hacia AuditLogObserver y EmailNotifierObserver.
             </p>

@@ -19,10 +19,14 @@ class SQLAlchemyTicketRepository(TicketRepositoryInterface):
         self._session = session
 
     def get_by_id(self, ticket_id: int) -> Optional[TicketModel]:
-        """Recupera un ticket junto con sus logs de auditoría para evitar consultas N+1."""
+        """Recupera un ticket junto con sus relaciones para evitar consultas N+1."""
         return (
             self._session.query(TicketModel)
-            .options(joinedload(TicketModel.audit_logs))
+            .options(
+                joinedload(TicketModel.audit_logs),
+                joinedload(TicketModel.creator),
+                joinedload(TicketModel.assignee)
+            )
             .filter(TicketModel.id == ticket_id)
             .first()
         )
@@ -31,15 +35,31 @@ class SQLAlchemyTicketRepository(TicketRepositoryInterface):
         self,
         category: Optional[str] = None,
         status: Optional[str] = None,
+        created_by_id: Optional[int] = None,
+        assigned_to_id: Optional[int] = None,
+        unassigned_only: bool = False,
         skip: int = 0,
         limit: int = 100
     ) -> List[TicketModel]:
-        query = self._session.query(TicketModel).options(joinedload(TicketModel.audit_logs))
+        query = (
+            self._session.query(TicketModel)
+            .options(
+                joinedload(TicketModel.audit_logs),
+                joinedload(TicketModel.creator),
+                joinedload(TicketModel.assignee)
+            )
+        )
         
         if category:
             query = query.filter(TicketModel.category == category.upper())
         if status:
             query = query.filter(TicketModel.status == status.upper())
+        if created_by_id is not None:
+            query = query.filter(TicketModel.created_by_id == created_by_id)
+        if assigned_to_id is not None:
+            query = query.filter(TicketModel.assigned_to_id == assigned_to_id)
+        if unassigned_only:
+            query = query.filter(TicketModel.assigned_to_id.is_(None))
 
         return query.order_by(TicketModel.created_at.desc()).offset(skip).limit(limit).all()
 

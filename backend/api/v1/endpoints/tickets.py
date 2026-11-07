@@ -12,10 +12,15 @@ from backend.services.service_desk_facade import ServiceDeskFacade
 from backend.domain.schemas.ticket import (
     TicketCreateRequest,
     TicketStatusUpdateRequest,
+    TicketAssignRequest,
     TicketResponse,
     AuditLogResponse,
 )
-from backend.services.exceptions import TicketNotFoundError
+from backend.services.exceptions import (
+    TicketNotFoundError,
+    UserNotFoundError,
+    UnauthorizedRoleActionError,
+)
 from backend.domain.states.exceptions import InvalidStateTransitionError
 from backend.domain.factories.exceptions import FactoryValidationError
 
@@ -26,7 +31,7 @@ router = APIRouter(prefix="/tickets", tags=["Tickets"])
     "/",
     response_model=TicketResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Crear un nuevo ticket (Factory Method + Observer)"
+    summary="Crear un nuevo ticket (Factory Method + Observer + RBAC)"
 )
 def create_ticket(
     request: TicketCreateRequest,
@@ -34,7 +39,7 @@ def create_ticket(
 ) -> TicketResponse:
     """
     Crea un ticket procesándolo polimórficamente a través de Factory Method.
-    Registra el evento de auditoría y notifica vía Observer.
+    Registra el solicitante (created_by_id) y notifica vía Observer.
     """
     try:
         return facade.create_ticket(request)
@@ -54,12 +59,75 @@ def create_ticket(
 def list_tickets(
     category: Optional[str] = Query(None, description="Filtro opcional por categoría (HARDWARE, SOFTWARE, ACCESS)"),
     ticket_status: Optional[str] = Query(None, alias="status", description="Filtro por estado (OPEN, IN_PROCESS, RESOLVED, CLOSED)"),
+    created_by_id: Optional[int] = Query(None, description="Filtrar por ID del usuario creador/solicitante"),
+    assigned_to_id: Optional[int] = Query(None, description="Filtrar por ID del especialista TI asignado"),
+    unassigned: bool = Query(False, description="Filtrar tickets sin especialista asignado"),
     skip: int = Query(0, ge=0, description="Registros a omitir"),
     limit: int = Query(100, ge=1, le=500, description="Límite de registros por página"),
     facade: ServiceDeskFacade = Depends(get_service_desk_facade)
 ) -> List[TicketResponse]:
-    """Recupera la lista de tickets aplicando filtros opcionales."""
-    return facade.list_tickets(category=category, status=ticket_status, skip=skip, limit=limit)
+    """
+    Recupera la lista de tickets aplicando filtros opcionales.
+    Permite a los usuarios normales consultar sus tickets y a TI filtrar por asignación.
+    """
+    return facade.list_tickets(
+        category=category,
+        status=ticket_status,
+        created_by_id=created_by_id,
+        assigned_to_id=assigned_to_id,
+        unassigned_only=unassigned,
+        skip=skip,
+        limit=limit
+    )
+
+
+@router.post(
+    "/{ticket_id}/assign",
+    response_model=TicketResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Asignar o reasignar ticket a un especialista TI"
+)
+def assign_ticket(
+    ticket_id: int,
+    request: TicketAssignRequest,
+    facade: ServiceDeskFacade = Depends(get_service_desk_facade)
+) -> TicketResponse:
+    """
+    Asigna un ticket a un especialista de TI o Administrador.
+    Si el ticket estaba OPEN, transiciona automáticamente a IN_PROCESS.
+    """
+    try:
+        return facade.assign_ticket(ticket_id, request)
+    except TicketNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except UnauthorizedRoleActionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.patch(
+    "/{ticket_id}/status",
+    response_model=TicketResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Transicionar estado del ticket (State Pattern + Observer + RBAC)"
+)
+def change_ticket_status(
+    ticket_id: int,
+    request: TicketStatusUpdateRequest,
+    facade: ServiceDeskFacade = Depends(get_service_desk_facade)
+) -> TicketResponse:
+    """
+    Ejecuta una transición de estado validada por la máquina de estados y las reglas de rol.
+    """
+    try:
+        return facade.change_ticket_status(ticket_id, request)
+    except TicketNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except InvalidStateTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except UnauthorizedRoleActionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @router.get(
@@ -90,29 +158,6 @@ def get_ticket(
         return facade.get_ticket(ticket_id)
     except TicketNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-
-
-@router.patch(
-    "/{ticket_id}/status",
-    response_model=TicketResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Transicionar estado del ticket (State Pattern + Observer)"
-)
-def change_ticket_status(
-    ticket_id: int,
-    request: TicketStatusUpdateRequest,
-    facade: ServiceDeskFacade = Depends(get_service_desk_facade)
-) -> TicketResponse:
-    """
-    Ejecuta una transición de estado validada por la máquina de estados.
-    Despacha notificaciones a los observadores ante el cambio.
-    """
-    try:
-        return facade.change_ticket_status(ticket_id, request)
-    except TicketNotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except InvalidStateTransitionError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.get(
