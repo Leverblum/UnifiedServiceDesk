@@ -1,24 +1,60 @@
 # Unified Service Desk — Mesa de Ayuda Universitaria
 
-Sistema integral de gestión de tickets de soporte TI y trámites académicos universitarios. Implementa **Clean Architecture** como **Monolito Modular** con **Control de Acceso Basado en Roles (RBAC)** y los 6 patrones de diseño GoF solicitados.
+Sistema integral de gestión de tickets de soporte TI y trámites académicos universitarios. Implementa **Clean Architecture** como **Monolito Modular** con **Control de Acceso Basado en Roles (RBAC)** y los 6 patrones de diseño GoF.
+
+**Stack:** Python 3.14 + FastAPI + SQLAlchemy 2.0 (SQLite/PostgreSQL) · React 19 + Vite + Tailwind CSS
 
 ---
 
-## 1. Roles del Sistema (5 Roles Oficiales — DEF-05)
+## Roles del Sistema — 5 Roles Oficiales
 
-| Rol | Valor | Descripción |
-|-----|-------|-------------|
-| `STUDENT` | Estudiante | Crea tickets de trámites académicos (certificados, matrículas, campus virtual) |
-| `STAFF` | Personal / Docente | Crea tickets de soporte TI (hardware, software, acceso) |
-| `IT_STUDENT_SUPPORT` | TI Soporte Estudiantes | Atiende y resuelve tickets estudiantiles |
-| `IT_STAFF_SUPPORT` | TI Soporte Personal & Campus | Atiende tickets de personal e infraestructura |
-| `ADMIN` | Administrador General | Gestión completa, métricas y configuración del sistema |
+| Rol | Icono | Descripción | Acceso |
+|-----|-------|-------------|--------|
+| `STUDENT` | 🎓 | Estudiante universitario | Portal de autoservicio — solo sus propios tickets |
+| `STAFF` | 🏫 | Personal administrativo / Docente | Portal de autoservicio — solo sus propios tickets |
+| `IT_STUDENT_SUPPORT` | 📚 | TI Soporte Estudiantes | Tablero Kanban — atiende tickets estudiantiles |
+| `IT_STAFF_SUPPORT` | 🛠️ | TI Soporte Personal & Campus | Tablero Kanban — atiende tickets de personal e infraestructura |
+| `ADMIN` | 🛡️ | Administrador General | Acceso completo — métricas, usuarios, todos los tickets |
+
+### Usuarios de Prueba (seed)
+
+| Email | Rol | Nombre |
+|-------|-----|--------|
+| `admin@universidad.edu.co` | ADMIN | Ing. Andrés Valenzuela |
+| `estudiante.camilo@universidad.edu.co` | STUDENT | Camilo Torres |
+| `profesora.helena@universidad.edu.co` | STAFF | Dra. Helena Restrepo |
+| `soporte.estudiantes@universidad.edu.co` | IT_STUDENT_SUPPORT | Mateo Rivas |
+| `soporte.personal@universidad.edu.co` | IT_STAFF_SUPPORT | Ing. Laura Méndez |
+
+**Contraseña de demo:** `UniServiceDesk2026!` (configurable en `SEED_DEFAULT_PASSWORD`)
 
 ---
 
-## 2. Categorías de Tickets (CR-02)
+## Vistas por Rol
 
-### Trámites y Servicios Estudiantiles
+### 🎓 STUDENT / 🏫 STAFF — Portal de Autoservicio
+- Consulta y seguimiento **únicamente de sus propios tickets** (aislamiento de datos RF-08).
+- Formulario de creación adaptativo según categoría (**Factory Method**).
+- Puede solicitar reapertura formal de casos resueltos.
+- No tiene acceso al tablero Kanban general.
+
+### 📚 IT_STUDENT_SUPPORT / 🛠️ IT_STAFF_SUPPORT — Tablero Kanban
+- Vista operativa con columnas `OPEN → IN_PROCESS → RESOLVED → CLOSED`.
+- Filtros rápidos: todos los casos, cola sin asignar, asignados a mí.
+- Autoasignación con un clic y reasignación entre técnicos.
+- Transiciones de estado gobernadas por el **Patrón State**.
+
+### 🛡️ ADMIN — Panel de Administración
+- Control completo del sistema.
+- Gestión de usuarios: alta, consulta y asignación de roles.
+- Acceso a métricas globales (`GET /api/v1/tickets/metrics`).
+- Puede reasignar y eliminar cualquier ticket.
+
+---
+
+## Categorías de Tickets
+
+### Trámites Estudiantiles
 | Categoría | Descripción | Metadatos obligatorios |
 |-----------|-------------|----------------------|
 | `CERTIFICADO` | Certificados de notas y constancias | `student_code`, `certificate_type` |
@@ -26,100 +62,155 @@ Sistema integral de gestión de tickets de soporte TI y trámites académicos un
 | `RADICADO` | Peticiones formales, PQR | `request_type` |
 | `CAMPUS_VIRTUAL` | Moodle, Teams, correo institucional | `platform_name` |
 
-### Soporte TI para Personal Universitario
+### Soporte TI para Personal
 | Categoría | Descripción | Metadatos obligatorios |
 |-----------|-------------|----------------------|
 | `HARDWARE` | Equipos, proyectores, periféricos | `serial_number` o `device_type` |
 | `SOFTWARE` | ERP, software de laboratorios | `software_name` |
-| `ACCESS` | VPN, permisos de red, accesos institucionales | `target_system`, `system_role` |
+| `ACCESS` | VPN, permisos de red, accesos | `target_system`, `system_role` |
 
 ---
 
-## 3. Patrones de Diseño GoF Implementados (CR-03)
+## Patrones de Diseño GoF Implementados
 
-| Patrón | Implementación | Archivo principal |
-|--------|---------------|-------------------|
-| **Singleton** | `DatabaseManager` — pool de conexiones único thread-safe | `backend/core/database.py` |
-| **Factory Method** | `TicketFactoryRegistry` — 7 fábricas concretas por categoría | `backend/domain/factories/ticket_factories.py` |
-| **Repository** | `SQLAlchemyTicketRepository`, `SQLAlchemyUserRepository` | `backend/repositories/` |
-| **Facade** | `ServiceDeskFacade` — punto único de orquestación | `backend/services/service_desk_facade.py` |
-| **State** | `OpenState`, `InProcessState`, `ResolvedState`, `ClosedState` | `backend/domain/states/ticket_states.py` |
-| **Observer** | `TicketSubject`, `AuditLogObserver`, `EmailNotifierObserver` | `backend/services/observers/` |
+| Patrón | Archivo principal | Descripción |
+|--------|-------------------|-------------|
+| **Singleton** | `backend/core/database.py` | `DatabaseManager` — pool de conexiones único, thread-safe con `threading.Lock` |
+| **Factory Method** | `backend/domain/factories/ticket_factories.py` | `TicketFactoryRegistry` + 7 fábricas concretas por categoría |
+| **Repository** | `backend/repositories/` | `SQLAlchemyTicketRepository` y `SQLAlchemyUserRepository` — desacoplan dominio del ORM |
+| **Facade** | `backend/services/service_desk_facade.py` | `ServiceDeskFacade` — punto único de orquestación para todos los endpoints |
+| **State** | `backend/domain/states/ticket_states.py` | `OpenState`, `InProcessState`, `ResolvedState`, `ClosedState` |
+| **Observer** | `backend/services/observers/` | `TicketSubject`, `AuditLogObserver`, `EmailNotifierObserver` |
 
 ---
 
-## 4. Variables de Entorno Requeridas
+## Seguridad
 
-Copia `backend/.env.example` a `backend/.env` y completa los valores:
+| Defecto | Corrección aplicada |
+|---------|-------------------|
+| DEF-01 Contraseñas en texto plano | Hashing **Argon2id** (`argon2-cffi`) — almacenado como `$argon2id$...` |
+| DEF-02 Credenciales hardcodeadas | Sin `"12345"` en código fuente; secretos en `.env` vía `SEED_DEFAULT_PASSWORD` |
+| DEF-03 Sin autenticación real | **JWT (PyJWT HS256)** firmado con `sub`, `role`, `iat`, `exp`; endpoint `GET /me` |
+| DEF-04 Sesión insegura en frontend | Token JWT en **memoria del módulo** `api.js` — nunca en `localStorage` |
+| DEF-05 Roles inconsistentes | 5 roles oficiales únicos; eliminados `USER`, `AGENT`, `IT_SUPPORT` |
+
+---
+
+## Requisitos Previos
+
+- Python 3.10+ (probado con 3.14.4)
+- Node.js 18+ (probado con v25.9.0)
+- pip
+
+---
+
+## Instalación y Ejecución
+
+### 1. Clonar y configurar variables de entorno
+
+```bash
+git clone https://github.com/Leverblum/UnifiedServiceDesk.git
+cd UnifiedServiceDesk
+
+# Copiar la plantilla de entorno
+cp backend/.env.example backend/.env
+```
+
+Editar `backend/.env` con al menos estos valores:
 
 ```env
 DATABASE_URL=sqlite:///./unified_service_desk.db
-JWT_SECRET_KEY=<genera con: python -c "import secrets; print(secrets.token_hex(32))">
+JWT_SECRET_KEY=cambia_esto_por_un_valor_aleatorio_seguro
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
 SEED_DEFAULT_PASSWORD=UniServiceDesk2026!
 ```
 
-> **IMPORTANTE:** `JWT_SECRET_KEY` debe tener al menos 16 caracteres. El sistema falla en arranque si no está configurada correctamente (protección DEF-02).
+> Genera un JWT_SECRET_KEY seguro con:
+> ```bash
+> python -c "import secrets; print(secrets.token_hex(32))"
+> ```
 
----
+### 2. Backend (FastAPI)
 
-## 5. Seguridad Implementada
-
-| Defecto | Corrección |
-|---------|-----------|
-| DEF-01 Contraseñas en texto plano | Hashing **Argon2id** (argon2-cffi) — hash en BD comienza con `$argon2id$` |
-| DEF-02 Credenciales hardcodeadas | Eliminado `"12345"` de todo el código; secretos en `.env` |
-| DEF-03 Sin autenticación JWT | **PyJWT** firmado HS256 con `sub`, `role`, `iat`, `exp`; endpoint `/me` |
-| DEF-04 Sesión en localStorage | Token JWT en **memoria del módulo** `api.js`; nunca en localStorage |
-| DEF-05 Roles inconsistentes | 5 roles oficiales únicos; eliminados `USER`, `AGENT`, `IT_SUPPORT` |
-
----
-
-## 6. Comandos para Ejecutar
-
-### Backend (FastAPI)
 ```bash
 # Instalar dependencias
 pip install -r backend/requirements.txt
 
-# Copiar configuración
-cp backend/.env.example backend/.env
-# Editar JWT_SECRET_KEY en .env
-
-# Iniciar servidor
+# Iniciar el servidor (desde la raíz del proyecto)
 uvicorn backend.main:app --reload --port 8000
-
-# API disponible en: http://localhost:8000
-# Swagger UI: http://localhost:8000/docs
 ```
 
-### Frontend (React + Vite)
+El servidor siembra automáticamente los 5 usuarios de prueba con contraseñas hasheadas al arrancar.
+
+- API: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- Health check: http://localhost:8000/health
+
+> **Nota Windows (PowerShell):**
+> ```powershell
+> $env:PYTHONPATH = $pwd
+> & "python" -m uvicorn backend.main:app --reload --port 8000
+> ```
+
+### 3. Frontend (React + Vite)
+
 ```bash
 cd frontend
 npm install
-
-# Configurar contraseña demo (opcional, default ya funciona)
-# Crear frontend/.env con: VITE_DEMO_PASSWORD=UniServiceDesk2026!
-
 npm run dev
-# Frontend en: http://localhost:5173
 ```
 
-### Pruebas Automatizadas (pytest)
+Frontend disponible en http://localhost:5173
+
+Opcionalmente, crea `frontend/.env` para configurar la contraseña del login rápido:
+```env
+VITE_DEMO_PASSWORD=UniServiceDesk2026!
+```
+
+### 4. Ejecutar pruebas automatizadas
+
 ```bash
 # Desde la raíz del proyecto
-set PYTHONPATH=%cd%          # Windows
-# export PYTHONPATH=$(pwd)   # Linux/Mac
-
+# Windows:
+set PYTHONPATH=%cd%
 python -m pytest backend/tests/ -v --tb=short
 
-# Resultado esperado: 62 passed, 0 failed
+# Linux/Mac:
+PYTHONPATH=$(pwd) python -m pytest backend/tests/ -v --tb=short
 ```
+
+Resultado esperado: **62 passed, 0 failed**
+
+> Si al arrancar el backend el login falla con 401, elimina la BD en disco
+> (`unified_service_desk.db`) para que se recree con contraseñas hasheadas:
+> ```bash
+> rm unified_service_desk.db   # o del en Windows
+> ```
 
 ---
 
-## 7. Estructura del Proyecto
+## Endpoints Principales de la API
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/api/v1/users/login` | Login — retorna JWT Bearer | Pública |
+| `GET` | `/api/v1/users/me` | Usuario autenticado desde token | Bearer |
+| `GET` | `/api/v1/users/` | Listar usuarios (filtrable por rol) | Pública |
+| `POST` | `/api/v1/users/` | Crear usuario | Pública |
+| `POST` | `/api/v1/users/seed` | Sembrar 5 usuarios de prueba | Pública |
+| `GET` | `/api/v1/tickets/` | Listar tickets (filtros + paginación) | Pública |
+| `POST` | `/api/v1/tickets/` | Crear ticket (Factory Method) | Pública |
+| `GET` | `/api/v1/tickets/metrics` | Métricas e indicadores del sistema | Pública |
+| `POST` | `/api/v1/tickets/{id}/assign` | Asignar ticket a técnico TI | Pública |
+| `PATCH` | `/api/v1/tickets/{id}/status` | Transicionar estado (State Pattern) | Pública |
+| `GET` | `/api/v1/tickets/{id}/audit-logs` | Historial de auditoría (Observer) | Pública |
+| `GET` | `/health` | Health check del servicio | Pública |
+
+---
+
+## Estructura del Proyecto
 
 ```
 UnifiedServiceDesk/
@@ -127,174 +218,72 @@ UnifiedServiceDesk/
 │   ├── api/
 │   │   ├── dependencies.py          # DI: sesión, repositorios, JWT, RBAC
 │   │   └── v1/
+│   │       ├── router.py
 │   │       └── endpoints/
 │   │           ├── users.py         # Login JWT, /me, CRUD usuarios
 │   │           └── tickets.py       # CRUD tickets, métricas, auditoría
 │   ├── core/
 │   │   ├── config.py                # Settings con validación JWT_SECRET_KEY
 │   │   ├── database.py              # Singleton DatabaseManager
-│   │   └── security.py             # hash_password, verify_password, JWT
+│   │   └── security.py              # hash_password, verify_password, JWT
 │   ├── domain/
-│   │   ├── factories/               # Factory Method (7 fábricas)
+│   │   ├── factories/               # Factory Method (7 fábricas concretas)
 │   │   ├── models/                  # ORM: UserModel, TicketModel, AuditLogModel
-│   │   ├── schemas/                 # DTOs Pydantic (UserRole enum, TokenResponse)
-│   │   └── states/                  # State Pattern (4 estados)
-│   ├── repositories/                # Repository Pattern
+│   │   ├── schemas/                 # DTOs Pydantic (UserRole, TokenResponse, etc.)
+│   │   └── states/                  # State Pattern (4 estados de ticket)
+│   ├── repositories/                # Repository Pattern (Ticket, User)
 │   ├── services/
-│   │   ├── service_desk_facade.py   # Facade + login() con JWT
-│   │   └── observers/               # Observer (AuditLog + Email)
+│   │   ├── service_desk_facade.py   # Facade + login() con JWT + métricas
+│   │   ├── exceptions.py            # Excepciones de dominio
+│   │   └── observers/               # Observer (AuditLog + EmailNotifier)
 │   ├── tests/
-│   │   ├── conftest.py              # Fixtures pytest (DB en memoria, tokens)
+│   │   ├── conftest.py              # Fixtures pytest (BD en memoria, tokens JWT)
 │   │   ├── test_user_auth.py        # CP-05, CP-10, CP-11, CP-12
 │   │   ├── test_rbac.py             # CP-06, CP-09
 │   │   └── test_university.py       # CP-01..04, CP-07..08, CP-13, CP-14, CP-17
 │   ├── .env.example                 # Plantilla de variables de entorno
 │   ├── pytest.ini
+│   ├── main.py
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       ├── services/api.js          # Cliente HTTP con Bearer token en memoria
-│       ├── App.jsx                  # Sin localStorage de email; manejo 401/403
+│       ├── services/
+│       │   └── api.js               # Cliente HTTP con Bearer token en memoria
+│       ├── App.jsx                  # Shell principal — sin localStorage de email
 │       └── components/
-│           └── LoginModal.jsx       # Login con contraseña real (VITE_DEMO_PASSWORD)
+│           ├── LoginModal.jsx       # Login con contraseña real (VITE_DEMO_PASSWORD)
+│           ├── UserPortal.jsx       # Vista STUDENT / STAFF
+│           ├── KanbanBoard.jsx      # Vista IT_STUDENT_SUPPORT / IT_STAFF_SUPPORT
+│           ├── AdminPanel.jsx       # Vista ADMIN
+│           ├── Dashboard.jsx        # Métricas y KPIs
+│           ├── Navbar.jsx           # Barra de navegación por rol
+│           ├── TicketFormModal.jsx  # Creación de ticket (Factory Method)
+│           └── AuditLogModal.jsx    # Historial de auditoría (Observer)
 └── docs/
-    ├── architecture_guidelines.md
-    └── REPORTE_PRUEBAS_QA.md
-```
-
-Sistema integral de gestión de tickets de soporte TI concebido bajo principios de **Clean Architecture**, estructurado como un **Monolito Modular (Modular Monolith)** e implementando **Control de Acceso Basado en Roles (RBAC)** con vistas separadas y especializadas según el perfil del usuario.
-
----
-
-## 1. Vistas y Roles del Sistema (RBAC)
-
-La aplicación incluye un **Selector de Persona / Rol** en la barra superior (Navbar) que permite alternar dinámicamente y sin fricciones entre los distintos roles para pruebas inmediatas:
-
-### 👤 1. Vista de Usuario Solicitante (`USER`)
-- **Personas de demostración:** Carlos Gómez (Finanzas & Contabilidad), María López (Marketing & Comunicaciones).
-- **Funcionalidades:**
-  - **Portal de Autoservicio (`UserPortal.jsx`):** Consulta y seguimiento en tiempo real **únicamente de los tickets creados por el usuario**.
-  - Tarjetas de estado con información clara sobre qué **especialista técnico de TI** está atendiendo el caso (o si está en espera de asignación).
-  - Formulario de creación adaptativo (**Factory Method**) con pre-asignación automática del solicitante.
-  - Opción de solicitar **reapertura formal** de casos resueltos o cerrados si la falla persiste.
-  - El usuario solicitante **no** tiene acceso a la cola general de TI ni puede forzar resoluciones técnicas arbitrarias.
-
-### 🛠️ 2. Vista de Mesa de Ayuda TI (`IT_SUPPORT`)
-- **Personas de demostración:** Laura Técnico (Mesa de Ayuda Nivel 1), David Sistemas (Infraestructura & Servidores).
-- **Funcionalidades:**
-  - **Tablero Kanban Operativo (`KanbanBoard.jsx`):** Flujo de trabajo dividido por estados (`OPEN` $\rightarrow$ `IN_PROCESS` $\rightarrow$ `RESOLVED` $\rightarrow$ `CLOSED`).
-  - **Filtros de Triage rápido:** "Todos los Casos", "Cola Sin Asignar" y "Asignados a Mí".
-  - **Asignación y Reasignación técnica:** Botón de un solo clic *"Tomar Ticket ✋"* para autoasignarse incidencias y selector desplegable para transferir casos entre especialistas de TI.
-  - Gestión de transiciones gobernadas por el **Patrón State**.
-  - Inspección de trazabilidad y correos notificados (**Patrón Observer**).
-
-### 🛡️ 3. Vista de Administración Global (`ADMIN`)
-- **Persona de demostración:** Andrés Admin (Dirección de Tecnología).
-- **Funcionalidades:**
-  - Control absoluto del sistema.
-  - **Panel de Gestión de Usuarios y Directorio RBAC (`AdminPanel.jsx`):**
-    - Directorio completo de usuarios con métricas de tickets creados y tickets asignados.
-    - Formulario para dar de alta nuevos usuarios y asignarles roles (`USER`, `IT_SUPPORT`, `ADMIN`).
-  - Capacidad de reasignar cualquier ticket, eliminar incidencias y consultar métricas globales de soporte y carga operativa por técnico.
-
----
-
-## 2. Patrones de Diseño GoF Implementados
-
-| Patrón GoF | Capa / Módulo | Descripción y Responsabilidad |
-| :--- | :--- | :--- |
-| **Singleton** | `backend/core/database.py` | Gestiona de forma centralizada y segura en hilos (`threading.Lock`) la instancia de conexión, pool y `sessionmaker` de la base de datos relacional. |
-| **Factory Method** | `backend/domain/factories/` | Instanciación polimórfica de tickets (`HardwareTicket`, `SoftwareTicket`, `AccessTicket`) con validación de invariantes, prioridades automáticas y asociación al usuario solicitante (`created_by_id`). |
-| **Repository** | `backend/repositories/` | Aísla totalmente el dominio y la fachada del ORM (SQLAlchemy) mediante `TicketRepositoryInterface` y `UserRepositoryInterface`. |
-| **Facade** | `backend/services/service_desk_facade.py` | Orquesta todo el flujo de negocio: validaciones, creación, asignación a especialistas, verificación RBAC, transiciones de estado, persistencia y eventos. Los controladores de FastAPI interactúan exclusivamente con esta fachada. |
-| **State** | `backend/domain/states/` | Máquina de estados (`OpenState`, `InProcessState`, `ResolvedState`, `ClosedState`) que encapsula las transiciones legales sin condicionales masivos (`if/elif`). |
-| **Observer** | `backend/services/observers/` | Bus de eventos y suscriptores (`TicketSubject`) que notifica en tiempo real a `AuditLogObserver` (registro en BD) y `EmailNotifierObserver` (despacho simulado de correo al solicitante y al técnico asignado). |
-
----
-
-## 3. Tecnologías Utilizadas
-
-- **Backend:** Python 3.14 / FastAPI (Asíncrono, Pydantic v2, Uvicorn).
-- **ORM / Base de Datos:** SQLAlchemy 2.0 (PostgreSQL / SQLite).
-- **Frontend:** React 19 + Vite + Tailwind CSS.
-- **Arquitectura:** Clean Architecture & Monolito Modular con RBAC.
-
----
-
-## 4. Instrucciones de Ejecución
-
-### Iniciar el Backend (FastAPI)
-1. Abrir una terminal en la raíz del proyecto.
-2. Ejecutar con el entorno virtual:
-   ```powershell
-   .\backend\venv\Scripts\uvicorn backend.main:app --reload --port 8000
-   ```
-   El backend usa por defecto `unified_service_desk.db` (SQLite) en la raíz del proyecto.
-   Para usar PostgreSQL, configura `DATABASE_URL` en el entorno o en `.env`; el servidor
-   PostgreSQL debe aceptar conexiones con codificación UTF-8.
-3. Documentación interactiva de la API:
-   - Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
-   - ReDoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-### Iniciar el Frontend (React + Vite)
-1. Abrir una segunda terminal en la raíz del proyecto.
-2. Iniciar el servidor de desarrollo:
-   ```powershell
-   npm --prefix frontend run dev
-   ```
-3. Abrir en el navegador: [http://localhost:5173](http://localhost:5173)
-
-### Ejecutar Pruebas Automatizadas de Integración y RBAC
-```powershell
-.\backend\venv\Scripts\python backend/tests/test_rbac.py
-.\backend\venv\Scripts\python backend/tests/test_user_auth.py
+    ├── architecture_guidelines.md   # Guía arquitectónica detallada
+    └── REPORTE_PRUEBAS_QA.md        # Reporte QA — 62 casos de prueba
 ```
 
 ---
 
-## 5. Estructura del Proyecto
+## Cobertura de Pruebas QA
 
-```text
-UnifiedServiceDesk/
-├── backend/
-│   ├── api/
-│   │   ├── dependencies.py             # Inyección de dependencias (Depends)
-│   │   └── v1/
-│   │       ├── endpoints/
-│   │       │   ├── tickets.py          # Endpoints HTTP de Tickets (consumen la Fachada)
-│   │       │   └── users.py            # Endpoints HTTP de Usuarios y RBAC
-│   │       └── router.py
-│   ├── core/
-│   │   ├── config.py                   # Pydantic Settings
-│   │   └── database.py                 # DatabaseManager (Singleton)
-│   ├── domain/
-│   │   ├── models/                     # Modelos ORM (User, Ticket, AuditLog)
-│   │   ├── schemas/                    # DTOs Pydantic (User, Ticket, Enums)
-│   │   ├── states/                     # Patrón State (Open, InProcess, Resolved, Closed)
-│   │   └── factories/                  # Patrón Factory Method (HW, SW, Access)
-│   ├── repositories/                   # Patrón Repository (TicketRepository, UserRepository)
-│   ├── services/
-│   │   ├── observers/                  # Patrón Observer (AuditLog & EmailNotifier)
-│   │   ├── exceptions.py               # Excepciones de negocio y autorización
-│   │   └── service_desk_facade.py      # Patrón Facade (Punto central de orquestación)
-│   ├── tests/
-│   │   └── test_rbac.py                # Pruebas automatizadas de roles y flujos
-│   └── main.py                         # FastAPI App & Lifespan
-├── frontend/
-│   ├── src/
-│   │   ├── components/                 
-│   │   │   ├── UserPortal.jsx          # Vista de Usuario Solicitante (USER)
-│   │   │   ├── KanbanBoard.jsx         # Vista de Mesa de Ayuda TI (IT_SUPPORT)
-│   │   │   ├── AdminPanel.jsx          # Vista de Administración Global (ADMIN)
-│   │   │   ├── Dashboard.jsx           # Métricas y KPIs de soporte
-│   │   │   ├── Navbar.jsx              # Barra con Selector de Rol / Persona
-│   │   │   ├── TicketFormModal.jsx     # Creación polimórfica (Factory Method)
-│   │   │   └── AuditLogModal.jsx       # Trazabilidad y Notificaciones (Observer)
-│   │   ├── services/api.js             # Cliente HTTP Axios/Fetch
-│   │   ├── App.jsx                     # Shell principal reactivo
-│   │   └── main.jsx
-│   ├── tailwind.config.js
-│   └── package.json
-└── docs/
-    └── architecture_guidelines.md      # Guía y diagramas arquitectónicos
-```
+| ID | Requisito | Descripción |
+|----|-----------|-------------|
+| CP-01 | RF-01 | Creación de ticket con ID único autoincremental |
+| CP-02 | RF-02 | 7 categorías + 4 prioridades (11 tests parametrizados) |
+| CP-03 | RF-03 | Asignación y reasignación a técnico TI |
+| CP-04 | RF-04 | Transiciones de estado válidas e inválidas (State Pattern) |
+| CP-05 | RF-05 | Login JWT: 200 + token válido / 401 en inválido |
+| CP-06 | RF-05 | RBAC 5 roles: 200/403 según permisos |
+| CP-07 | RF-06 | Observer: ≥3 eventos en audit log por ticket |
+| CP-08 | RF-07 | Métricas matemáticamente consistentes con la BD |
+| CP-09 | RF-08 | Aislamiento: STUDENT solo ve sus propios tickets |
+| CP-10 | DEF-01 | Hash `$argon2id$` en BD, salts únicos por usuario |
+| CP-11 | DEF-03 | JWT: 401 sin token / con firma alterada / expirado |
+| CP-12 | DEF-02 | 0 contraseñas hardcodeadas en archivos .py y .js |
+| CP-13 | RNF-02 | Todos los endpoints responden en < 2.0 s |
+| CP-14 | Staging | `/health` → 200 + status: healthy |
+| CP-17 | RNF-06 | Integridad referencial: 404/400/422 controlados |
+
+Ver reporte completo en [`docs/REPORTE_PRUEBAS_QA.md`](docs/REPORTE_PRUEBAS_QA.md).
