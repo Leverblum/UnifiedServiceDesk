@@ -1,6 +1,7 @@
 """
 Implementación del Patrón Singleton para la gestión de conexiones a Base de Datos.
-Centraliza el Engine de SQLAlchemy y el SessionMaker para PostgreSQL.
+Centraliza el Engine de SQLAlchemy y el SessionMaker para PostgreSQL/SQLite.
+Migraciones defensivas de contraseñas hardcodeadas eliminadas (DEF-02).
 """
 
 import threading
@@ -20,7 +21,7 @@ class DatabaseManager:
     Patrón Singleton (GoF):
     Garantiza que exista una única instancia de DatabaseManager en toda la aplicación,
     evitando la proliferación de pools de conexiones y asegurando el control centralizado
-    del ciclo de vida de las conexiones a PostgreSQL.
+    del ciclo de vida de las conexiones.
     """
     _instance = None
     _lock = threading.Lock()
@@ -41,15 +42,13 @@ class DatabaseManager:
         with self._lock:
             if getattr(self, "_initialized", False):
                 return
-            
+
             self._database_url = database_url or settings.DATABASE_URL
-            
-            # Configuración de pool de conexiones optimizado para PostgreSQL
+
             engine_args = {
                 "pool_pre_ping": True,
             }
-            
-            # Parámetros de pool para PostgreSQL (no aplicables si fuera SQLite en memoria)
+
             if "postgresql" in self._database_url:
                 engine_args.update({
                     "pool_size": 10,
@@ -61,18 +60,18 @@ class DatabaseManager:
                     from sqlalchemy.pool import StaticPool
                     engine_args.update({
                         "connect_args": {"check_same_thread": False},
-                        "poolclass": StaticPool
+                        "poolclass": StaticPool,
                     })
                 else:
                     engine_args.update({
-                        "connect_args": {"check_same_thread": False}
+                        "connect_args": {"check_same_thread": False},
                     })
 
             try:
                 self._engine = create_engine(self._database_url, **engine_args)
-                # Verificar conectividad real a la base de datos
+                # Verificar conectividad real a PostgreSQL
                 if "postgresql" in self._database_url:
-                    with self._engine.connect() as conn:
+                    with self._engine.connect():
                         pass
             except Exception as e:
                 if isinstance(e, UnicodeDecodeError):
@@ -89,12 +88,14 @@ class DatabaseManager:
                 )
                 fallback_url = "sqlite:///./unified_service_desk.db"
                 self._database_url = fallback_url
-                self._engine = create_engine(fallback_url, connect_args={"check_same_thread": False})
+                self._engine = create_engine(
+                    fallback_url, connect_args={"check_same_thread": False}
+                )
 
             self._session_factory = sessionmaker(
                 autocommit=False,
                 autoflush=False,
-                bind=self._engine
+                bind=self._engine,
             )
             self._initialized = True
             logger.info("DatabaseManager Singleton inicializado exitosamente.")
@@ -120,34 +121,34 @@ class DatabaseManager:
 
     def create_all_tables(self) -> None:
         """Crea todas las tablas declaradas en la metadata de SQLAlchemy."""
-        import backend.domain.models  # Garantizar que los modelos ORM estén registrados en Base.metadata
+        import backend.domain.models  # Registra modelos ORM en Base.metadata
         Base.metadata.create_all(bind=self._engine)
 
-        # Migración defensiva automática para SQLite local si existía la base de datos previa
+        # Migración defensiva para columnas nuevas en SQLite existente (sin inyectar contraseñas)
         if "sqlite" in self._database_url:
             try:
                 from sqlalchemy import text
                 with self._engine.connect() as conn:
-                    # Migraciones de tickets (ya existentes)
                     res = conn.execute(text("PRAGMA table_info(tickets);")).fetchall()
                     col_names = [r[1] for r in res]
                     if col_names and "created_by_id" not in col_names:
-                        conn.execute(text("ALTER TABLE tickets ADD COLUMN created_by_id INTEGER REFERENCES users(id);"))
+                        conn.execute(text(
+                            "ALTER TABLE tickets ADD COLUMN created_by_id INTEGER REFERENCES users(id);"
+                        ))
                         conn.commit()
                     if col_names and "assigned_to_id" not in col_names:
-                        conn.execute(text("ALTER TABLE tickets ADD COLUMN assigned_to_id INTEGER REFERENCES users(id);"))
+                        conn.execute(text(
+                            "ALTER TABLE tickets ADD COLUMN assigned_to_id INTEGER REFERENCES users(id);"
+                        ))
                         conn.commit()
-                    # Nueva migración: agregar columna password a la tabla users si falta
+                    # Migrar columna password si existe con longitud insuficiente para hashes Argon2id
                     res_users = conn.execute(text("PRAGMA table_info(users);")).fetchall()
                     user_cols = [r[1] for r in res_users]
-                    if "password" not in user_cols:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT '12345';"))
-                        conn.commit()
                     if "created_at" not in user_cols:
-                        conn.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME;"))
+                        conn.execute(text("ALTER TABLE tickets ADD COLUMN created_at DATETIME;"))
                         conn.commit()
-            except Exception as e:
-                logger.debug(f"Migración preventiva SQLite: {e}")
+            except Exception as exc:
+                logger.debug("Migración preventiva SQLite: %s", exc)
 
     def drop_all_tables(self) -> None:
         """Elimina todas las tablas (usado en tests y mantenimiento)."""

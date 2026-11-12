@@ -1,3 +1,13 @@
+/**
+ * App.jsx — Componente raíz del frontend Unified Service Desk.
+ *
+ * Seguridad (DEF-04 / H-SEC-04):
+ * - La sesión NO se guarda en localStorage como email.
+ * - El token JWT se mantiene en memoria del módulo api.js.
+ * - Al recargar la página, se requiere nuevo login (sin restauración automática insegura).
+ * - Se escucha el evento 'auth:unauthorized' para redirigir al login ante 401.
+ */
+
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import LoginModal from './components/LoginModal';
@@ -20,60 +30,60 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [notificationToast, setNotificationToast] = useState(null);
 
-  // Modales
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedTicketForAudit, setSelectedTicketForAudit] = useState(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
   useEffect(() => {
-    // Check localStorage for stored session
-    const storedEmail = localStorage.getItem('currentUserEmail');
-    if (storedEmail) {
-      // Try to restore session
-      apiService.login(storedEmail).then((user) => {
-        setCurrentUser(user);
-        setIsLoginModalOpen(false);
-        setActiveTabForRole(user.role);
-      }).catch(() => {
-        localStorage.removeItem('currentUserEmail');
-      });
-    }
+    // Escuchar eventos de sesión expirada (401) para forzar re-login
+    const handleUnauthorized = () => {
+      setCurrentUser(null);
+      setIsLoginModalOpen(true);
+      showToast('Tu sesión ha expirado. Por favor inicia sesión nuevamente.', 'error');
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+
     fetchInitialData();
+
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
   }, []);
 
   const showToast = (message, type = 'info') => {
     setNotificationToast({ message, type });
-    setTimeout(() => {
-      setNotificationToast(null);
-    }, 4500);
+    setTimeout(() => setNotificationToast(null), 4500);
   };
 
   const setActiveTabForRole = (role) => {
     if (['STUDENT', 'STAFF'].includes(role)) {
       setActiveTab('user_portal');
-    } else if (['IT_STUDENT_SUPPORT', 'IT_STAFF_SUPPORT'].includes(role)) {
-      setActiveTab('kanban');
-    } else if (role === 'ADMIN') {
+    } else if (['IT_STUDENT_SUPPORT', 'IT_STAFF_SUPPORT', 'ADMIN'].includes(role)) {
       setActiveTab('kanban');
     }
   };
 
-  const handleLogin = async (email) => {
+  /**
+   * Login real: requiere email + contraseña explícita.
+   * El token se almacena en memoria en api.js — no en localStorage.
+   */
+  const handleLogin = async (email, password) => {
     try {
-      const user = await apiService.login(email);
+      const user = await apiService.login(email, password);
       setCurrentUser(user);
       setIsLoginModalOpen(false);
-      localStorage.setItem('currentUserEmail', user.email);
       setActiveTabForRole(user.role);
       showToast(`Bienvenido/a ${user.full_name}`, 'success');
+      // Recargar tickets con credenciales válidas
+      await fetchTickets();
     } catch (err) {
       throw err;
     }
   };
 
   const handleLogout = () => {
+    apiService.logout();
     setCurrentUser(null);
-    localStorage.removeItem('currentUserEmail');
     setIsLoginModalOpen(true);
     setActiveTab('user_portal');
     showToast('Sesión cerrada', 'info');
@@ -83,20 +93,16 @@ export default function App() {
     setIsLoading(true);
     setErrorMessage('');
     try {
-      // 1. Health check
       const health = await apiService.checkHealth();
       setIsOnline(health.status === 'healthy');
 
-      // 2. Cargar usuarios del sistema (o sembrar si está vacío)
       let loadedUsers = await apiService.getUsers();
       if (!loadedUsers || loadedUsers.length === 0) {
         loadedUsers = await apiService.seedUsers();
       }
       setUsers(loadedUsers);
 
-      // 3. Cargar tickets
-      const data = await apiService.getTickets();
-      setTickets(data);
+      await fetchTickets();
     } catch (err) {
       console.error('Error al conectar con la API:', err);
       setIsOnline(false);
@@ -108,32 +114,27 @@ export default function App() {
     }
   };
 
+  const fetchTickets = async () => {
+    try {
+      const data = await apiService.getTickets();
+      setTickets(data);
+    } catch {
+      // Si no hay token aún, los tickets públicos vacíos son aceptables
+      setTickets([]);
+    }
+  };
+
   const handleSwitchUser = (userId) => {
-    const selected = users.find((u) => u.id === userId);
-    if (!selected) return;
-
-    setCurrentUser(selected);
-    localStorage.setItem('currentUserEmail', selected.email);
-    setActiveTabForRole(selected.role);
-
-    const roleLabels = {
-      STUDENT: 'Estudiante',
-      STAFF: 'Personal Universitario',
-      IT_STUDENT_SUPPORT: 'Soporte TI Estudiantes',
-      IT_STAFF_SUPPORT: 'Soporte TI Personal',
-      ADMIN: 'Administrador',
-    };
-    showToast(`Cambiado a: ${selected.full_name} (${roleLabels[selected.role] || selected.role})`, 'info');
+    // Cambio de usuario de demostración — requiere re-login real
+    showToast('Para cambiar de usuario, usa el formulario de inicio de sesión.', 'info');
+    setIsLoginModalOpen(true);
   };
 
   const handleCreateTicket = async (ticketPayload) => {
     try {
       const newTicket = await apiService.createTicket(ticketPayload);
       setTickets((prev) => [newTicket, ...prev]);
-      showToast(
-        `¡Ticket #${newTicket.id} registrado exitosamente!`,
-        'success'
-      );
+      showToast(`¡Ticket #${newTicket.id} registrado exitosamente!`, 'success');
     } catch (err) {
       throw err;
     }
@@ -141,12 +142,7 @@ export default function App() {
 
   const handleAssignTicket = async (ticketId, assignedToId, reason) => {
     try {
-      const updated = await apiService.assignTicket(
-        ticketId,
-        assignedToId,
-        reason,
-        currentUser?.id
-      );
+      const updated = await apiService.assignTicket(ticketId, assignedToId, reason, currentUser?.id);
       setTickets((prev) => prev.map((t) => (t.id === ticketId ? updated : t)));
       showToast(
         `Ticket #${ticketId} ${assignedToId ? 'asignado a técnico' : 'desasignado'} correctamente.`,
@@ -165,13 +161,8 @@ export default function App() {
         reason,
         userId || currentUser?.id
       );
-      setTickets((prev) =>
-        prev.map((t) => (t.id === ticketId ? updatedTicket : t))
-      );
-      showToast(
-        `Ticket #${ticketId} transicionado a '${targetStatus}'`,
-        'success'
-      );
+      setTickets((prev) => prev.map((t) => (t.id === ticketId ? updatedTicket : t)));
+      showToast(`Ticket #${ticketId} transicionado a '${targetStatus}'`, 'success');
     } catch (err) {
       showToast(`Transición rechazada: ${err.message}`, 'error');
     }
@@ -185,9 +176,7 @@ export default function App() {
         'Reapertura solicitada por el usuario',
         currentUser?.id
       );
-      setTickets((prev) =>
-        prev.map((t) => (t.id === ticketId ? updatedTicket : t))
-      );
+      setTickets((prev) => prev.map((t) => (t.id === ticketId ? updatedTicket : t)));
       showToast(`Ticket #${ticketId} reabierto exitosamente.`, 'success');
     } catch (err) {
       showToast(`Error al reabrir ticket: ${err.message}`, 'error');
@@ -220,13 +209,12 @@ export default function App() {
     setIsAuditModalOpen(true);
   };
 
-  const technicians = users.filter(
-    (u) => ['IT_STUDENT_SUPPORT', 'IT_STAFF_SUPPORT', 'ADMIN'].includes(u.role)
+  const technicians = users.filter((u) =>
+    ['IT_STUDENT_SUPPORT', 'IT_STAFF_SUPPORT', 'ADMIN'].includes(u.role)
   );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Login Modal */}
       <LoginModal
         isOpen={isLoginModalOpen}
         users={users}
@@ -236,7 +224,6 @@ export default function App() {
         }}
       />
 
-      {/* Toast Notification */}
       {notificationToast && (
         <div className="fixed bottom-6 right-6 z-50 animate-bounce">
           <div
@@ -253,7 +240,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Navbar Superior con Selector de Rol/Persona */}
       {currentUser && (
         <Navbar
           activeTab={activeTab}
@@ -268,7 +254,6 @@ export default function App() {
         />
       )}
 
-      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {errorMessage && (
           <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between">
@@ -297,8 +282,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* 1. Vista de Solicitante (Estudiante o Personal) */}
-            {activeTab === 'user_portal' && currentUser && (
+            {activeTab === 'user_portal' && (
               <UserPortal
                 currentUser={currentUser}
                 tickets={tickets}
@@ -307,8 +291,6 @@ export default function App() {
                 onReopenTicket={handleReopenTicket}
               />
             )}
-
-            {/* 2. Vista de Mesa de Ayuda TI / Kanban */}
             {activeTab === 'kanban' && (
               <KanbanBoard
                 tickets={tickets}
@@ -321,8 +303,6 @@ export default function App() {
                 isLoading={isLoading}
               />
             )}
-
-            {/* 3. Panel de Administración de Usuarios (RBAC) */}
             {activeTab === 'admin_users' && (
               <AdminPanel
                 users={users}
@@ -331,8 +311,6 @@ export default function App() {
                 onOpenCreateTicketModal={() => setIsCreateModalOpen(true)}
               />
             )}
-
-            {/* 4. Dashboard de Métricas TI */}
             {activeTab === 'dashboard' && (
               <Dashboard
                 tickets={tickets}
@@ -340,8 +318,6 @@ export default function App() {
                 onOpenCreateModal={() => setIsCreateModalOpen(true)}
               />
             )}
-
-            {/* 5. Auditoría & Notificaciones */}
             {activeTab === 'audit' && (
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6">
                 <div className="mb-4">
@@ -365,14 +341,10 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-        <p>
-          Unified Service Desk &bull; Plataforma Universitaria de Soporte Institucional
-        </p>
+        <p>Unified Service Desk &bull; Plataforma Universitaria de Soporte Institucional</p>
       </footer>
 
-      {/* Modales */}
       <TicketFormModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}

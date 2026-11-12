@@ -27,6 +27,21 @@ from backend.domain.factories.exceptions import FactoryValidationError
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
+@router.get(
+    "/metrics",
+    status_code=status.HTTP_200_OK,
+    summary="Métricas e indicadores del Service Desk (RF-07 / CP-08)",
+)
+def get_metrics(
+    facade: ServiceDeskFacade = Depends(get_service_desk_facade),
+):
+    """
+    Retorna métricas agregadas: totales, distribución por estado, categoría y prioridad.
+    Utilizado para dashboards de ADMIN e IT Support.
+    """
+    return facade.get_metrics()
+
+
 @router.post(
     "/",
     response_model=TicketResponse,

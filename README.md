@@ -1,4 +1,166 @@
-# Unified Service Desk (MVP con Roles y RBAC)
+# Unified Service Desk — Mesa de Ayuda Universitaria
+
+Sistema integral de gestión de tickets de soporte TI y trámites académicos universitarios. Implementa **Clean Architecture** como **Monolito Modular** con **Control de Acceso Basado en Roles (RBAC)** y los 6 patrones de diseño GoF solicitados.
+
+---
+
+## 1. Roles del Sistema (5 Roles Oficiales — DEF-05)
+
+| Rol | Valor | Descripción |
+|-----|-------|-------------|
+| `STUDENT` | Estudiante | Crea tickets de trámites académicos (certificados, matrículas, campus virtual) |
+| `STAFF` | Personal / Docente | Crea tickets de soporte TI (hardware, software, acceso) |
+| `IT_STUDENT_SUPPORT` | TI Soporte Estudiantes | Atiende y resuelve tickets estudiantiles |
+| `IT_STAFF_SUPPORT` | TI Soporte Personal & Campus | Atiende tickets de personal e infraestructura |
+| `ADMIN` | Administrador General | Gestión completa, métricas y configuración del sistema |
+
+---
+
+## 2. Categorías de Tickets (CR-02)
+
+### Trámites y Servicios Estudiantiles
+| Categoría | Descripción | Metadatos obligatorios |
+|-----------|-------------|----------------------|
+| `CERTIFICADO` | Certificados de notas y constancias | `student_code`, `certificate_type` |
+| `MATRICULA` | Ajustes de matrícula e inscripciones | `student_code`, `subject_or_program` |
+| `RADICADO` | Peticiones formales, PQR | `request_type` |
+| `CAMPUS_VIRTUAL` | Moodle, Teams, correo institucional | `platform_name` |
+
+### Soporte TI para Personal Universitario
+| Categoría | Descripción | Metadatos obligatorios |
+|-----------|-------------|----------------------|
+| `HARDWARE` | Equipos, proyectores, periféricos | `serial_number` o `device_type` |
+| `SOFTWARE` | ERP, software de laboratorios | `software_name` |
+| `ACCESS` | VPN, permisos de red, accesos institucionales | `target_system`, `system_role` |
+
+---
+
+## 3. Patrones de Diseño GoF Implementados (CR-03)
+
+| Patrón | Implementación | Archivo principal |
+|--------|---------------|-------------------|
+| **Singleton** | `DatabaseManager` — pool de conexiones único thread-safe | `backend/core/database.py` |
+| **Factory Method** | `TicketFactoryRegistry` — 7 fábricas concretas por categoría | `backend/domain/factories/ticket_factories.py` |
+| **Repository** | `SQLAlchemyTicketRepository`, `SQLAlchemyUserRepository` | `backend/repositories/` |
+| **Facade** | `ServiceDeskFacade` — punto único de orquestación | `backend/services/service_desk_facade.py` |
+| **State** | `OpenState`, `InProcessState`, `ResolvedState`, `ClosedState` | `backend/domain/states/ticket_states.py` |
+| **Observer** | `TicketSubject`, `AuditLogObserver`, `EmailNotifierObserver` | `backend/services/observers/` |
+
+---
+
+## 4. Variables de Entorno Requeridas
+
+Copia `backend/.env.example` a `backend/.env` y completa los valores:
+
+```env
+DATABASE_URL=sqlite:///./unified_service_desk.db
+JWT_SECRET_KEY=<genera con: python -c "import secrets; print(secrets.token_hex(32))">
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
+SEED_DEFAULT_PASSWORD=UniServiceDesk2026!
+```
+
+> **IMPORTANTE:** `JWT_SECRET_KEY` debe tener al menos 16 caracteres. El sistema falla en arranque si no está configurada correctamente (protección DEF-02).
+
+---
+
+## 5. Seguridad Implementada
+
+| Defecto | Corrección |
+|---------|-----------|
+| DEF-01 Contraseñas en texto plano | Hashing **Argon2id** (argon2-cffi) — hash en BD comienza con `$argon2id$` |
+| DEF-02 Credenciales hardcodeadas | Eliminado `"12345"` de todo el código; secretos en `.env` |
+| DEF-03 Sin autenticación JWT | **PyJWT** firmado HS256 con `sub`, `role`, `iat`, `exp`; endpoint `/me` |
+| DEF-04 Sesión en localStorage | Token JWT en **memoria del módulo** `api.js`; nunca en localStorage |
+| DEF-05 Roles inconsistentes | 5 roles oficiales únicos; eliminados `USER`, `AGENT`, `IT_SUPPORT` |
+
+---
+
+## 6. Comandos para Ejecutar
+
+### Backend (FastAPI)
+```bash
+# Instalar dependencias
+pip install -r backend/requirements.txt
+
+# Copiar configuración
+cp backend/.env.example backend/.env
+# Editar JWT_SECRET_KEY en .env
+
+# Iniciar servidor
+uvicorn backend.main:app --reload --port 8000
+
+# API disponible en: http://localhost:8000
+# Swagger UI: http://localhost:8000/docs
+```
+
+### Frontend (React + Vite)
+```bash
+cd frontend
+npm install
+
+# Configurar contraseña demo (opcional, default ya funciona)
+# Crear frontend/.env con: VITE_DEMO_PASSWORD=UniServiceDesk2026!
+
+npm run dev
+# Frontend en: http://localhost:5173
+```
+
+### Pruebas Automatizadas (pytest)
+```bash
+# Desde la raíz del proyecto
+set PYTHONPATH=%cd%          # Windows
+# export PYTHONPATH=$(pwd)   # Linux/Mac
+
+python -m pytest backend/tests/ -v --tb=short
+
+# Resultado esperado: 62 passed, 0 failed
+```
+
+---
+
+## 7. Estructura del Proyecto
+
+```
+UnifiedServiceDesk/
+├── backend/
+│   ├── api/
+│   │   ├── dependencies.py          # DI: sesión, repositorios, JWT, RBAC
+│   │   └── v1/
+│   │       └── endpoints/
+│   │           ├── users.py         # Login JWT, /me, CRUD usuarios
+│   │           └── tickets.py       # CRUD tickets, métricas, auditoría
+│   ├── core/
+│   │   ├── config.py                # Settings con validación JWT_SECRET_KEY
+│   │   ├── database.py              # Singleton DatabaseManager
+│   │   └── security.py             # hash_password, verify_password, JWT
+│   ├── domain/
+│   │   ├── factories/               # Factory Method (7 fábricas)
+│   │   ├── models/                  # ORM: UserModel, TicketModel, AuditLogModel
+│   │   ├── schemas/                 # DTOs Pydantic (UserRole enum, TokenResponse)
+│   │   └── states/                  # State Pattern (4 estados)
+│   ├── repositories/                # Repository Pattern
+│   ├── services/
+│   │   ├── service_desk_facade.py   # Facade + login() con JWT
+│   │   └── observers/               # Observer (AuditLog + Email)
+│   ├── tests/
+│   │   ├── conftest.py              # Fixtures pytest (DB en memoria, tokens)
+│   │   ├── test_user_auth.py        # CP-05, CP-10, CP-11, CP-12
+│   │   ├── test_rbac.py             # CP-06, CP-09
+│   │   └── test_university.py       # CP-01..04, CP-07..08, CP-13, CP-14, CP-17
+│   ├── .env.example                 # Plantilla de variables de entorno
+│   ├── pytest.ini
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── services/api.js          # Cliente HTTP con Bearer token en memoria
+│       ├── App.jsx                  # Sin localStorage de email; manejo 401/403
+│       └── components/
+│           └── LoginModal.jsx       # Login con contraseña real (VITE_DEMO_PASSWORD)
+└── docs/
+    ├── architecture_guidelines.md
+    └── REPORTE_PRUEBAS_QA.md
+```
 
 Sistema integral de gestión de tickets de soporte TI concebido bajo principios de **Clean Architecture**, estructurado como un **Monolito Modular (Modular Monolith)** e implementando **Control de Acceso Basado en Roles (RBAC)** con vistas separadas y especializadas según el perfil del usuario.
 

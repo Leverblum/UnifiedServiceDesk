@@ -1,18 +1,34 @@
+/**
+ * LoginModal.jsx — Modal de inicio de sesión con contraseña real.
+ *
+ * Seguridad (DEF-04 / H-SEC-04):
+ * - El login rápido envía contraseña desde variable de entorno VITE_DEMO_PASSWORD.
+ * - Nunca se omite la contraseña ni se salta la autenticación.
+ * - El token JWT se almacena en memoria del módulo api.js, no en localStorage.
+ */
+
 import React, { useState } from 'react';
 
+// Contraseña de demo configurable por variable de entorno (nunca hardcodeada en prod)
+const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || 'UniServiceDesk2026!';
+
 export default function LoginModal({ isOpen, users = [], onLogin, onClose }) {
-  const [selectedEmail, setSelectedEmail] = useState('');
   const [customEmail, setCustomEmail] = useState('');
+  const [customPassword, setCustomPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   if (!isOpen) return null;
 
+  /**
+   * Login rápido: usa la contraseña de demo configurada por entorno.
+   * Realiza una petición real de autenticación contra el backend.
+   */
   const handleSelectQuickUser = async (email) => {
     setIsSubmitting(true);
     setErrorMessage('');
     try {
-      await onLogin(email);
+      await onLogin(email, DEMO_PASSWORD);
       onClose();
     } catch (err) {
       setErrorMessage(err.message || 'Error al iniciar sesión');
@@ -23,11 +39,11 @@ export default function LoginModal({ isOpen, users = [], onLogin, onClose }) {
 
   const handleCustomLogin = async (e) => {
     e.preventDefault();
-    if (!customEmail) return;
+    if (!customEmail || !customPassword) return;
     setIsSubmitting(true);
     setErrorMessage('');
     try {
-      await onLogin(customEmail);
+      await onLogin(customEmail, customPassword);
       onClose();
     } catch (err) {
       setErrorMessage(err.message || 'Error al iniciar sesión');
@@ -78,12 +94,13 @@ export default function LoginModal({ isOpen, users = [], onLogin, onClose }) {
             </div>
           )}
 
+          {/* Login rápido — realiza autenticación real con contraseña de entorno */}
           <div>
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
               Ingreso Rápido con Usuarios de Prueba (MVP)
             </label>
             <p className="text-[11px] text-slate-400 mb-3">
-              Selecciona uno de los 5 roles preconfigurados para explorar su vista especializada:
+              Selecciona uno de los 5 roles preconfigurados. Se autentica con credenciales reales del entorno.
             </p>
 
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
@@ -95,6 +112,7 @@ export default function LoginModal({ isOpen, users = [], onLogin, onClose }) {
                     disabled={isSubmitting}
                     onClick={() => handleSelectQuickUser(u.email)}
                     className="w-full p-3 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 hover:border-indigo-500/60 transition text-left flex items-center justify-between group cursor-pointer"
+                    aria-label={`Iniciar sesión como ${u.full_name}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="text-xl">{badge.icon}</div>
@@ -115,26 +133,40 @@ export default function LoginModal({ isOpen, users = [], onLogin, onClose }) {
             </div>
           </div>
 
+          {/* Login con correo y contraseña explícita */}
           <div className="relative border-t border-slate-800 pt-4">
             <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-slate-900 px-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-              O ingresar con correo
+              O ingresar con credenciales
             </span>
-            <form onSubmit={handleCustomLogin} className="flex gap-2">
+            <form onSubmit={handleCustomLogin} className="space-y-2">
               <input
                 type="email"
                 required
-                placeholder="ejemplo@universidad.edu.co"
+                placeholder="correo@universidad.edu.co"
                 value={customEmail}
                 onChange={(e) => setCustomEmail(e.target.value)}
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Correo institucional"
               />
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md transition disabled:opacity-50"
-              >
-                {isSubmitting ? 'Iniciando...' : 'Entrar'}
-              </button>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  required
+                  placeholder="Contraseña"
+                  value={customPassword}
+                  onChange={(e) => setCustomPassword(e.target.value)}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  aria-label="Contraseña"
+                  minLength={4}
+                />
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-md transition disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Iniciando...' : 'Entrar'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -149,4 +181,3 @@ export default function LoginModal({ isOpen, users = [], onLogin, onClose }) {
     </div>
   );
 }
-

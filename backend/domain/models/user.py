@@ -1,6 +1,7 @@
 """
 Modelo ORM de SQLAlchemy para la entidad Usuario (User / RBAC).
-Soporta los roles universitarios: STUDENT, STAFF, IT_STUDENT_SUPPORT, IT_STAFF_SUPPORT, ADMIN.
+Soporta los 5 roles universitarios: STUDENT, STAFF, IT_STUDENT_SUPPORT, IT_STAFF_SUPPORT, ADMIN.
+La columna password almacena SIEMPRE el hash Argon2id — nunca texto plano (DEF-01).
 """
 
 from datetime import datetime, timezone
@@ -21,21 +22,29 @@ class UserModel(Base):
     full_name = Column(String(255), nullable=False)
     role = Column(String(50), nullable=False, default="STUDENT", index=True)
     department = Column(String(100), nullable=True)
-    password = Column(String(255), nullable=False, default='12345')
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=True)
+    # Almacena EXCLUSIVAMENTE hash Argon2id. Nunca texto plano. (DEF-01)
+    password = Column(String(512), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=True,
+    )
 
     # Relaciones con Tickets
     created_tickets = relationship(
         "TicketModel",
         foreign_keys="[TicketModel.created_by_id]",
-        back_populates="creator"
+        back_populates="creator",
     )
 
     assigned_tickets = relationship(
         "TicketModel",
         foreign_keys="[TicketModel.assigned_to_id]",
-        back_populates="assignee"
+        back_populates="assignee",
     )
 
     def __repr__(self) -> str:
-        return f"<UserModel(id={self.id}, email='{self.email}', role='{self.role}', name='{self.full_name}')>"
+        return (
+            f"<UserModel(id={self.id}, email='{self.email}', "
+            f"role='{self.role}', name='{self.full_name}')>"
+        )
