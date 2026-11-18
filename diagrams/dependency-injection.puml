@@ -1,0 +1,45 @@
+@startuml
+title Inyeccion de dependencias - Composicion de la API
+skinparam classAttributeIconSize 0
+
+class FastAPIDependencies <<Framework>> {
+  +Depends(provider)
+}
+
+class DependencyProviders <<Module: backend.api.dependencies>> {
+  +get_db_session(): Generator[Session]
+  +get_ticket_repository(session): TicketRepositoryInterface
+  +get_user_repository(session): UserRepositoryInterface
+  +get_service_desk_facade(ticket_repository, user_repository): ServiceDeskFacade
+  +get_current_user(token, facade): UserResponse
+  +require_roles(allowed_roles): Dependency
+}
+
+class TicketEndpoints <<FastAPI Router Functions>>
+class UserEndpoints <<FastAPI Router Functions>>
+class DatabaseManager <<Singleton>>
+class Session <<SQLAlchemy>>
+class SQLAlchemyTicketRepository
+class SQLAlchemyUserRepository
+class ServiceDeskFacade
+class UserResponse <<DTO>>
+
+TicketEndpoints ..> FastAPIDependencies : Depends(get_service_desk_facade)
+UserEndpoints ..> FastAPIDependencies : Depends(get_service_desk_facade)
+UserEndpoints ..> FastAPIDependencies : Depends(get_current_user)
+
+FastAPIDependencies ..> DependencyProviders : resuelve proveedores
+DependencyProviders ..> DatabaseManager : obtiene sesiones
+DatabaseManager ..> Session : session_factory()
+DependencyProviders ..> SQLAlchemyTicketRepository : construye con Session
+DependencyProviders ..> SQLAlchemyUserRepository : construye con Session
+DependencyProviders ..> ServiceDeskFacade : construye con repositorios
+DependencyProviders ..> UserResponse : autentica y autoriza
+
+note bottom
+  DependencyProviders representa funciones de modulo,
+  no una clase definida en el codigo fuente.
+  FastAPI reutiliza la dependencia get_db_session dentro
+  de una misma solicitud para compartir la sesion.
+end note
+@enduml

@@ -1,0 +1,54 @@
+@startuml
+title Repository - Persistencia de tickets y usuarios
+skinparam classAttributeIconSize 0
+
+interface TicketRepositoryInterface <<Repository>> {
+  +get_by_id(ticket_id: int): Optional[TicketModel]
+  +get_all(...): List[TicketModel]
+  +create(ticket: TicketModel): TicketModel
+  +update(ticket: TicketModel): TicketModel
+  +delete(ticket_id: int): bool
+  +add_audit_log(log: AuditLogModel): AuditLogModel
+  +get_audit_logs(ticket_id: int): List[AuditLogModel]
+}
+
+class SQLAlchemyTicketRepository <<ConcreteRepository>> {
+  -_session: Session
+}
+
+interface UserRepositoryInterface <<Repository>> {
+  +get_by_id(user_id: int): Optional[UserModel]
+  +get_by_email(email: str): Optional[UserModel]
+  +get_all(role: Optional[str]): List[UserModel]
+  +create(user: UserModel): UserModel
+  +update(user: UserModel): UserModel
+  +delete(user_id: int): bool
+}
+
+class SQLAlchemyUserRepository <<ConcreteRepository>> {
+  -_session: Session
+}
+
+class ServiceDeskFacade <<Client>>
+class Session <<SQLAlchemy>>
+class TicketModel <<ORM Entity>>
+class UserModel <<ORM Entity>>
+class AuditLogModel <<ORM Entity>>
+
+TicketRepositoryInterface <|.. SQLAlchemyTicketRepository
+UserRepositoryInterface <|.. SQLAlchemyUserRepository
+
+ServiceDeskFacade --> TicketRepositoryInterface : usa
+ServiceDeskFacade --> UserRepositoryInterface : usa
+SQLAlchemyTicketRepository --> Session : consulta y persiste
+SQLAlchemyUserRepository --> Session : consulta y persiste
+TicketRepositoryInterface ..> TicketModel : opera sobre
+TicketRepositoryInterface ..> AuditLogModel : registra y consulta
+UserRepositoryInterface ..> UserModel : opera sobre
+
+note bottom
+  Las interfaces desacoplan la fachada de SQLAlchemy.
+  Las implementaciones concretas encapsulan las consultas ORM
+  y reciben la sesion por inyeccion de dependencias.
+end note
+@enduml

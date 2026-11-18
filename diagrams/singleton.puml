@@ -1,0 +1,39 @@
+@startuml
+title Singleton - Administrador de base de datos
+skinparam classAttributeIconSize 0
+
+class DatabaseManager <<Singleton>> {
+  -_instance: DatabaseManager {static}
+  -_lock: Lock {static}
+  -_initialized: bool
+  -_database_url: str
+  -_engine: Engine
+  -_session_factory: sessionmaker
+  +__new__(database_url: str = None): DatabaseManager
+  +__init__(database_url: str = None)
+  +get_session(): Generator[Session]
+  +create_all_tables(): None
+  +drop_all_tables(): None
+  +reset_instance_for_testing(): None {static}
+}
+
+class Engine <<SQLAlchemy>>
+class sessionmaker <<SQLAlchemy>>
+class Session <<SQLAlchemy>>
+class Settings <<Configuration>> {
+  +DATABASE_URL: str
+}
+
+DatabaseManager *-- Engine : administra
+DatabaseManager *-- sessionmaker : configura
+sessionmaker ..> Session : crea
+DatabaseManager ..> Settings : lee URL configurada
+
+note right of DatabaseManager
+  __new__ protege la creacion de la instancia
+  con un Lock y __init__ evita inicializarla
+  mas de una vez.
+  reset_instance_for_testing() permite reiniciarla
+  explicitamente durante pruebas.
+end note
+@enduml

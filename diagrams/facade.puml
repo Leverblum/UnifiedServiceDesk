@@ -1,0 +1,43 @@
+@startuml
+title Facade - Orquestacion de casos de uso
+skinparam classAttributeIconSize 0
+
+class ServiceDeskFacade <<Facade>> {
+  -_repository: TicketRepositoryInterface
+  -_user_repository: UserRepositoryInterface
+  -_subject: TicketSubject
+  -_email_notifier: EmailNotifierObserver
+  +login(email: str, password: str): TokenResponse
+  +get_current_user_from_token(token: str): UserResponse
+  +seed_default_users(): List[UserResponse]
+  +list_users(role: Optional[str]): List[UserResponse]
+  +create_user(request: UserCreateRequest): UserResponse
+  +create_ticket(request: TicketCreateRequest): TicketResponse
+  +assign_ticket(ticket_id: int, request: TicketAssignRequest): TicketResponse
+  +delete_ticket(ticket_id: int): bool
+}
+
+interface TicketRepositoryInterface
+interface UserRepositoryInterface
+class TicketSubject <<Observer Subject>>
+class EmailNotifierObserver <<Observer>>
+class TicketFactoryRegistry <<Factory Registry>>
+class TicketEvent <<Domain Event>>
+class TicketModel <<ORM Entity>>
+class TicketResponse <<DTO>>
+
+ServiceDeskFacade --> TicketRepositoryInterface : persists tickets and audit logs
+ServiceDeskFacade --> UserRepositoryInterface : authenticates and manages users
+ServiceDeskFacade --> TicketSubject : dispatches ticket events
+ServiceDeskFacade --> EmailNotifierObserver : exposes notification history
+ServiceDeskFacade ..> TicketFactoryRegistry : selects category factory
+ServiceDeskFacade ..> TicketEvent : publishes
+ServiceDeskFacade ..> TicketModel : coordinates domain model
+ServiceDeskFacade ..> TicketResponse : returns DTO
+
+note right of ServiceDeskFacade
+  The facade is constructed by FastAPI dependency providers.
+  If no TicketSubject is supplied, it creates one and attaches
+  AuditLogObserver and EmailNotifierObserver.
+end note
+@enduml

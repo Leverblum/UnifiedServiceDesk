@@ -1,0 +1,68 @@
+@startuml
+title State - Ciclo de vida del ticket
+skinparam classAttributeIconSize 0
+
+interface TicketState <<State>> {
+  +name: str
+  +allowed_transitions(): List[str]
+  +transition_to(target_status: str, context: TicketModel): TicketState
+  +start_progress(context: TicketModel): TicketState
+  +resolve(context: TicketModel): TicketState
+  +close(context: TicketModel): TicketState
+  +reopen(context: TicketModel): TicketState
+}
+
+class OpenState <<ConcreteState>> {
+  +name: str
+  +allowed_transitions(): List[str]
+  +start_progress(context: TicketModel): TicketState
+}
+
+class InProcessState <<ConcreteState>> {
+  +name: str
+  +allowed_transitions(): List[str]
+  +resolve(context: TicketModel): TicketState
+  +reopen(context: TicketModel): TicketState
+}
+
+class ResolvedState <<ConcreteState>> {
+  +name: str
+  +allowed_transitions(): List[str]
+  +close(context: TicketModel): TicketState
+  +start_progress(context: TicketModel): TicketState
+  +reopen(context: TicketModel): TicketState
+}
+
+class ClosedState <<ConcreteState>> {
+  +name: str
+  +allowed_transitions(): List[str]
+  +reopen(context: TicketModel): TicketState
+}
+
+class TicketModel <<Context>> {
+  +status: str
+  +current_state: TicketState
+  +transition_to(target_status: str): TicketState
+}
+
+class TicketStateResolver <<Module Function>> {
+  +get_state_instance(status_name: str): TicketState
+}
+
+TicketState <|.. OpenState
+TicketState <|.. InProcessState
+TicketState <|.. ResolvedState
+TicketState <|.. ClosedState
+
+TicketModel ..> TicketStateResolver : current_state resuelve
+TicketModel --> TicketState : delega transiciones
+TicketState ..> TicketModel : recibe contexto
+
+note bottom
+  Transiciones definidas:
+  OPEN -> IN_PROCESS
+  IN_PROCESS -> RESOLVED | OPEN
+  RESOLVED -> CLOSED | IN_PROCESS
+  CLOSED -> OPEN
+end note
+@enduml

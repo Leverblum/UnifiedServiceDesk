@@ -1,0 +1,57 @@
+@startuml
+title Observer - Eventos de tickets
+skinparam classAttributeIconSize 0
+
+interface TicketObserver <<Observer>> {
+  +update(event: TicketEvent): None
+}
+
+class TicketSubject <<Subject>> {
+  -_observers: List[TicketObserver]
+  +attach(observer: TicketObserver): None
+  +detach(observer: TicketObserver): None
+  +notify(event: TicketEvent): None
+}
+
+class AuditLogObserver <<ConcreteObserver>> {
+  -_repository: TicketRepositoryInterface
+  +update(event: TicketEvent): None
+}
+
+class EmailNotifierObserver <<ConcreteObserver>> {
+  -_sent_emails_history: List[Dict] {static}
+  +sent_emails: List[Dict]
+  +update(event: TicketEvent): None
+  +clear_history(): None {static}
+}
+
+class TicketEvent <<Immutable Domain Event>> {
+  +ticket_id: int
+  +event_type: str
+  +old_status: Optional[str]
+  +new_status: str
+  +details: Optional[str]
+  +user_email: Optional[str]
+  +assignee_email: Optional[str]
+  +timestamp: datetime
+}
+
+interface TicketRepositoryInterface
+class AuditLogModel <<ORM Entity>>
+class ServiceDeskFacade <<Publisher Client>>
+
+TicketObserver <|.. AuditLogObserver
+TicketObserver <|.. EmailNotifierObserver
+TicketSubject o-- "0..*" TicketObserver : suscriptores
+TicketSubject ..> TicketEvent : notifica
+TicketObserver ..> TicketEvent : recibe
+AuditLogObserver --> TicketRepositoryInterface : persiste auditoria
+AuditLogObserver ..> AuditLogModel : crea
+ServiceDeskFacade --> TicketSubject : publica cambios
+
+note bottom
+  El sujeto permite suscribir y cancelar observadores.
+  Cada observador reacciona al mismo TicketEvent
+  sin depender directamente del modelo TicketModel.
+end note
+@enduml

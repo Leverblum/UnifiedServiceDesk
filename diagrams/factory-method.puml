@@ -1,0 +1,61 @@
+@startuml
+title Factory Method - Creacion polimorfica de tickets
+skinparam classAttributeIconSize 0
+
+interface TicketFactory <<Creator>> {
+  +create_ticket(request: TicketCreateRequest): TicketModel
+}
+
+class CertificadoTicketFactory <<ConcreteCreator>>
+class MatriculaTicketFactory <<ConcreteCreator>>
+class RadicadoTicketFactory <<ConcreteCreator>>
+class CampusVirtualTicketFactory <<ConcreteCreator>>
+class HardwareTicketFactory <<ConcreteCreator>>
+class SoftwareTicketFactory <<ConcreteCreator>>
+class AccessTicketFactory <<ConcreteCreator>>
+
+class TicketFactoryRegistry <<Registry>> {
+  -_registry: Dict[str, Type[TicketFactory]] {static}
+  +register(category: str, factory_cls: Type[TicketFactory]): None {static}
+  +get_factory(category: str): TicketFactory {static}
+}
+
+class ServiceDeskFacade <<Client>> {
+  +create_ticket(request: TicketCreateRequest): TicketResponse
+}
+
+class TicketModel <<Product>> {
+  +id: int
+  +category: str
+  +priority: str
+  +status: str
+  +specific_metadata: JSON
+}
+
+TicketFactory <|.. CertificadoTicketFactory
+TicketFactory <|.. MatriculaTicketFactory
+TicketFactory <|.. RadicadoTicketFactory
+TicketFactory <|.. CampusVirtualTicketFactory
+TicketFactory <|.. HardwareTicketFactory
+TicketFactory <|.. SoftwareTicketFactory
+TicketFactory <|.. AccessTicketFactory
+
+TicketFactoryRegistry ..> TicketFactory : registra y crea
+TicketFactoryRegistry ..> CertificadoTicketFactory : mapea categorias
+TicketFactoryRegistry ..> MatriculaTicketFactory
+TicketFactoryRegistry ..> RadicadoTicketFactory
+TicketFactoryRegistry ..> CampusVirtualTicketFactory
+TicketFactoryRegistry ..> HardwareTicketFactory
+TicketFactoryRegistry ..> SoftwareTicketFactory
+TicketFactoryRegistry ..> AccessTicketFactory
+
+ServiceDeskFacade ..> TicketFactoryRegistry : get_factory(category)
+TicketFactory ..> TicketModel : crea
+TicketFactory ..> TicketCreateRequest : recibe
+
+note right of TicketFactoryRegistry
+  El registro selecciona la fabrica por categoria.
+  Cada fabrica concreta implementa create_ticket()
+  y aplica validaciones y valores predeterminados.
+end note
+@enduml
